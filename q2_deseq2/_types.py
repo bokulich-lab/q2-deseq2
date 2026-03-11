@@ -5,7 +5,7 @@
 #
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
-from q2_types.feature_table import FeatureTable
+from q2_types.feature_data import FeatureData
 from qiime2.plugin import SemanticType
 
-DESeq2Stats = SemanticType('DESeq2Stats', variant_of=FeatureTable.field['type'])
+DESeq2Stats = SemanticType('DESeq2Stats', variant_of=FeatureData.field['type'])

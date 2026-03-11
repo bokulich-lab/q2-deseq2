@@ -6,6 +6,7 @@
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
 
+import json
 import html
 from pathlib import Path
 import textwrap
@@ -17,9 +18,249 @@ import biom
 from q2_deseq2._deseq2 import run_deseq2
 
 
+def _value_or_none(value):
+    if pd.isna(value):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _build_volcano_records(result_table: pd.DataFrame) -> list[dict]:
+    records = []
+    for _, row in result_table.iterrows():
+        feature_id = row.get('feature_id')
+        if pd.isna(feature_id):
+            feature_id = ''
+
+        records.append({
+            'feature_id': str(feature_id),
+            'log2FoldChange': _value_or_none(row.get('log2FoldChange')),
+            'pvalue': _value_or_none(row.get('pvalue')),
+            'padj': _value_or_none(row.get('padj')),
+            'baseMean': _value_or_none(row.get('baseMean'))
+        })
+
+    return records
+
+
 def _render_index_html(output_dir: Path, contrast_label: str, alpha: float) -> None:
     results_fp = output_dir / 'deseq2_results.tsv'
     result_table = pd.read_csv(results_fp, sep='\t')
+    volcano_records = _build_volcano_records(result_table)
+    volcano_spec = {
+        '$schema': 'https://vega.github.io/schema/vega/v5.json',
+        'description': 'Interactive DESeq2 volcano plot.',
+        'width': 860,
+        'height': 500,
+        'padding': {'left': 75, 'top': 10, 'right': 20, 'bottom': 60},
+        'signals': [
+            {
+                'name': 'alphaCutoff',
+                'value': alpha,
+                'bind': {
+                    'input': 'range',
+                    'min': 0.0001,
+                    'max': 0.25,
+                    'step': 0.0001,
+                    'name': 'Adjusted p-value cutoff '
+                }
+            },
+            {
+                'name': 'lfcCutoff',
+                'value': 1.0,
+                'bind': {
+                    'input': 'range',
+                    'min': 0.0,
+                    'max': 5.0,
+                    'step': 0.1,
+                    'name': '|log2FC| cutoff '
+                }
+            },
+            {
+                'name': 'hover',
+                'value': None,
+                'on': [
+                    {'events': 'symbol:mouseover', 'update': 'datum'},
+                    {'events': 'symbol:mouseout', 'update': 'null'}
+                ]
+            }
+        ],
+        'data': [
+            {
+                'name': 'points',
+                'values': volcano_records,
+                'transform': [
+                    {
+                        'type': 'formula',
+                        'as': 'sig_p',
+                        'expr': 'datum.padj > 0 ? datum.padj : (datum.pvalue > 0 ? datum.pvalue : null)'
+                    },
+                    {
+                        'type': 'filter',
+                        'expr': ('isValid(datum.log2FoldChange) && isFinite(datum.log2FoldChange) && '
+                                 'datum.sig_p != null && isFinite(datum.sig_p)')
+                    },
+                    {'type': 'formula', 'as': 'neg_log10_p', 'expr': '-log(datum.sig_p)/LN10'},
+                    {'type': 'formula', 'as': 'abs_lfc', 'expr': 'abs(datum.log2FoldChange)'},
+                    {
+                        'type': 'formula',
+                        'as': 'sig_flag',
+                        'expr': 'datum.sig_p <= alphaCutoff && datum.abs_lfc >= lfcCutoff ? 1 : 0'
+                    },
+                    {
+                        'type': 'formula',
+                        'as': 'sig_label',
+                        'expr': "datum.sig_flag ? 'Significant' : 'Not significant'"
+                    }
+                ]
+            },
+            {
+                'name': 'summary',
+                'source': 'points',
+                'transform': [
+                    {
+                        'type': 'aggregate',
+                        'ops': ['count', 'sum'],
+                        'fields': [None, 'sig_flag'],
+                        'as': ['total', 'significant']
+                    }
+                ]
+            }
+        ],
+        'scales': [
+            {
+                'name': 'x',
+                'type': 'linear',
+                'domain': {'data': 'points', 'field': 'log2FoldChange'},
+                'nice': True,
+                'zero': False
+            },
+            {
+                'name': 'y',
+                'type': 'linear',
+                'domain': {'data': 'points', 'field': 'neg_log10_p'},
+                'nice': True,
+                'zero': True
+            },
+            {
+                'name': 'color',
+                'type': 'ordinal',
+                'domain': ['Not significant', 'Significant'],
+                'range': ['#9ca3af', '#dc2626']
+            }
+        ],
+        'axes': [
+            {'orient': 'bottom', 'scale': 'x', 'title': 'log2 fold change'},
+            {'orient': 'left', 'scale': 'y', 'title': '-log10 adjusted p-value (fallback to p-value)'}
+        ],
+        'legends': [
+            {'fill': 'color', 'title': 'Classification', 'orient': 'top-right'}
+        ],
+        'marks': [
+            {
+                'type': 'rule',
+                'encode': {
+                    'enter': {
+                        'stroke': {'value': '#dc2626'},
+                        'strokeDash': {'value': [5, 4]},
+                        'strokeWidth': {'value': 1}
+                    },
+                    'update': {
+                        'x': {'value': 0},
+                        'x2': {'signal': 'width'},
+                        'y': {'scale': 'y', 'signal': '-log(alphaCutoff)/LN10'}
+                    }
+                }
+            },
+            {
+                'type': 'rule',
+                'encode': {
+                    'enter': {
+                        'stroke': {'value': '#2563eb'},
+                        'strokeDash': {'value': [4, 4]},
+                        'strokeWidth': {'value': 1}
+                    },
+                    'update': {
+                        'x': {'scale': 'x', 'signal': 'lfcCutoff'},
+                        'x2': {'scale': 'x', 'signal': 'lfcCutoff'},
+                        'y': {'value': 0},
+                        'y2': {'signal': 'height'}
+                    }
+                }
+            },
+            {
+                'type': 'rule',
+                'encode': {
+                    'enter': {
+                        'stroke': {'value': '#2563eb'},
+                        'strokeDash': {'value': [4, 4]},
+                        'strokeWidth': {'value': 1}
+                    },
+                    'update': {
+                        'x': {'scale': 'x', 'signal': '-lfcCutoff'},
+                        'x2': {'scale': 'x', 'signal': '-lfcCutoff'},
+                        'y': {'value': 0},
+                        'y2': {'signal': 'height'}
+                    }
+                }
+            },
+            {
+                'type': 'symbol',
+                'from': {'data': 'points'},
+                'encode': {
+                    'enter': {
+                        'size': {'value': 45},
+                        'opacity': {'value': 0.75},
+                        'stroke': {'value': '#ffffff'},
+                        'strokeWidth': {'value': 0.4}
+                    },
+                    'update': {
+                        'x': {'scale': 'x', 'field': 'log2FoldChange'},
+                        'y': {'scale': 'y', 'field': 'neg_log10_p'},
+                        'fill': {'scale': 'color', 'field': 'sig_label'},
+                        'tooltip': {
+                            'signal': (
+                                "{'gene_id': datum.feature_id, "
+                                "'log2FoldChange': format(datum.log2FoldChange, '.4f'), "
+                                "'padj': datum.padj, "
+                                "'pvalue': datum.pvalue, "
+                                "'baseMean': datum.baseMean}"
+                            )
+                        }
+                    },
+                    'hover': {
+                        'opacity': {'value': 1},
+                        'size': {'value': 100}
+                    }
+                }
+            },
+            {
+                'type': 'text',
+                'encode': {
+                    'enter': {
+                        'x': {'value': 8},
+                        'y': {'value': -4},
+                        'fontSize': {'value': 12},
+                        'fill': {'value': '#111827'}
+                    },
+                    'update': {
+                        'text': {
+                            'signal': (
+                                "data('summary').length ? "
+                                "'Significant genes: ' + format(data('summary')[0].significant, ',') + "
+                                "' / ' + format(data('summary')[0].total, ',') : "
+                                "'No plottable points in result table.'"
+                            )
+                        }
+                    }
+                }
+            }
+        ]
+    }
+    volcano_spec_json = json.dumps(volcano_spec, separators=(',', ':'))
+
     preview_columns = [
         column for column in ['feature_id', 'log2FoldChange', 'pvalue', 'padj']
         if column in result_table.columns
@@ -31,50 +272,110 @@ def _render_index_html(output_dir: Path, contrast_label: str, alpha: float) -> N
 
     preview_html = preview_table.to_html(index=False, border=0, classes='preview')
 
-    index_html = textwrap.dedent(
-        f"""\
+    index_html_template = textwrap.dedent(
+        """\
         <!doctype html>
         <html lang="en">
         <head>
           <meta charset="utf-8">
           <title>DESeq2 Differential Expression</title>
+          <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+          <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
           <style>
-            body {{ font-family: Arial, sans-serif; margin: 2rem; color: #1f2937; }}
-            h1, h2 {{ margin-bottom: 0.5rem; }}
-            ul {{ margin-top: 0.25rem; }}
-            table {{ border-collapse: collapse; width: 100%; }}
-            th, td {{ border: 1px solid #d1d5db; padding: 0.4rem; text-align: left; }}
-            th {{ background: #f3f4f6; }}
-            code {{ background: #f3f4f6; padding: 0.1rem 0.3rem; }}
+            body { font-family: "Segoe UI", Tahoma, sans-serif; margin: 1.5rem 2rem; color: #1f2937; background: #f9fafb; }
+            h1, h2 { margin-bottom: 0.4rem; }
+            .header { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 1rem; }
+            .section { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 1rem; }
+            .meta { display: flex; flex-wrap: wrap; gap: 1.2rem; font-size: 0.95rem; }
+            .meta code { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; padding: 0.1rem 0.35rem; border-radius: 4px; }
+            ul { margin-top: 0.3rem; line-height: 1.6; }
+            #volcano-view { min-height: 560px; }
+            #volcano-fallback { margin-top: 0.8rem; }
+            #volcano-fallback img { max-width: 100%; border: 1px solid #d1d5db; border-radius: 6px; }
+            #volcano-error { color: #b91c1c; margin-top: 0.5rem; white-space: pre-wrap; }
+            table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+            th, td { border: 1px solid #d1d5db; padding: 0.4rem; text-align: left; }
+            th { background: #eef2ff; color: #1e3a8a; }
+            .vega-bindings { display: flex; flex-wrap: wrap; gap: 1.3rem; margin-bottom: 0.7rem; font-size: 0.92rem; }
+            .vega-bind label { display: flex; align-items: center; gap: 0.45rem; }
+            .vega-bind input[type="range"] { width: 240px; }
           </style>
         </head>
         <body>
-          <h1>DESeq2 Differential Expression Report</h1>
-          <p><strong>Contrast:</strong> {html.escape(contrast_label)}</p>
-          <p><strong>alpha:</strong> {alpha}</p>
-          <h2>Output Files</h2>
-          <ul>
-            <li><a href="deseq2_results.tsv">deseq2_results.tsv</a></li>
-            <li><a href="normalized_counts.tsv">normalized_counts.tsv</a></li>
-            <li><a href="deseq2_summary.txt">deseq2_summary.txt</a></li>
-            <li><a href="ma_plot.png">ma_plot.png</a></li>
-            <li><a href="volcano_plot.png">volcano_plot.png</a></li>
-            <li><a href="deseq2_stdout.txt">deseq2_stdout.txt</a></li>
-            <li><a href="deseq2_stderr.txt">deseq2_stderr.txt</a></li>
-          </ul>
-          <h2>Top Results Preview</h2>
-          {preview_html}
+          <div class="header">
+            <h1>DESeq2 Differential Expression Report</h1>
+            <div class="meta">
+              <div><strong>Contrast:</strong> <code>__CONTRAST__</code></div>
+              <div><strong>Default alpha:</strong> <code>__ALPHA__</code></div>
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>Interactive Volcano Plot</h2>
+            <p>Hover points to inspect gene IDs and adjust the displayed significance cutoffs with sliders.</p>
+            <div id="volcano-view"></div>
+            <div id="volcano-error"></div>
+            <div id="volcano-fallback">
+              <p>Fallback static volcano plot:</p>
+              <img src="volcano_plot.png" alt="Static volcano plot">
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>Output Files</h2>
+            <ul>
+              <li><a href="deseq2_results.tsv">deseq2_results.tsv</a></li>
+              <li><a href="normalized_counts.tsv">normalized_counts.tsv</a></li>
+              <li><a href="deseq2_summary.txt">deseq2_summary.txt</a></li>
+              <li><a href="ma_plot.png">ma_plot.png</a></li>
+              <li><a href="volcano_plot.png">volcano_plot.png</a></li>
+              <li><a href="deseq2_stdout.txt">deseq2_stdout.txt</a></li>
+              <li><a href="deseq2_stderr.txt">deseq2_stderr.txt</a></li>
+            </ul>
+          </div>
+
+          <div class="section">
+            <h2>Top Results Preview</h2>
+            __PREVIEW_TABLE__
+          </div>
+
+          <script>
+            const volcanoSpec = __VOLCANO_SPEC__;
+            const volcanoFallback = document.getElementById('volcano-fallback');
+            const volcanoError = document.getElementById('volcano-error');
+            vegaEmbed('#volcano-view', volcanoSpec, {actions: false, renderer: 'canvas'})
+              .then(function() {
+                if (volcanoFallback) {
+                  volcanoFallback.style.display = 'none';
+                }
+              })
+              .catch(function(err) {
+                if (volcanoError) {
+                  volcanoError.textContent =
+                    'Interactive volcano plot could not be rendered. ' +
+                    'The static fallback image is still available below.\\n\\n' + err;
+                }
+                if (volcanoFallback) {
+                  volcanoFallback.style.display = 'block';
+                }
+              });
+          </script>
         </body>
         </html>
         """
     )
+    index_html = (index_html_template
+                  .replace('__CONTRAST__', html.escape(contrast_label))
+                  .replace('__ALPHA__', str(alpha))
+                  .replace('__PREVIEW_TABLE__', preview_html)
+                  .replace('__VOLCANO_SPEC__', volcano_spec_json))
     (output_dir / 'index.html').write_text(index_html, encoding='utf-8')
 
 
 def differential_expression(
     output_dir: str,
     table: biom.Table,
-    condition: str,
+    condition,
     test_level: str = '',
     reference_level: str = '',
     min_total_count: int = 10,

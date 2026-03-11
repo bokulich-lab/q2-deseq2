@@ -57,6 +57,7 @@ class DifferentialExpressionTests(unittest.TestCase):
             normalized_counts_fp = Path(cmd[cmd.index('--normalized-counts') + 1])
             summary_fp = Path(cmd[cmd.index('--summary') + 1])
             ma_plot_fp = Path(cmd[cmd.index('--ma-plot') + 1])
+            volcano_plot_fp = Path(cmd[cmd.index('--volcano-plot') + 1])
 
             results_fp.write_text(
                 'feature_id\tbaseMean\tlog2FoldChange\tpvalue\tpadj\n'
@@ -70,6 +71,7 @@ class DifferentialExpressionTests(unittest.TestCase):
             )
             summary_fp.write_text('summary line\n', encoding='utf-8')
             ma_plot_fp.write_bytes(b'PNG')
+            volcano_plot_fp.write_bytes(b'PNG')
 
             return subprocess.CompletedProcess(
                 cmd,
@@ -95,6 +97,7 @@ class DifferentialExpressionTests(unittest.TestCase):
                 'normalized_counts.tsv',
                 'deseq2_summary.txt',
                 'ma_plot.png',
+                'volcano_plot.png',
                 'deseq2_stdout.txt',
                 'deseq2_stderr.txt',
                 'index.html'
@@ -113,6 +116,7 @@ class DifferentialExpressionTests(unittest.TestCase):
             normalized_counts_fp = Path(cmd[cmd.index('--normalized-counts') + 1])
             summary_fp = Path(cmd[cmd.index('--summary') + 1])
             ma_plot_fp = Path(cmd[cmd.index('--ma-plot') + 1])
+            volcano_plot_fp = Path(cmd[cmd.index('--volcano-plot') + 1])
 
             results_fp.write_text(
                 'feature_id\tbaseMean\tlog2FoldChange\tlfcSE\tstat\tpvalue\tpadj\n'
@@ -126,6 +130,7 @@ class DifferentialExpressionTests(unittest.TestCase):
             )
             summary_fp.write_text('summary line\n', encoding='utf-8')
             ma_plot_fp.write_bytes(b'PNG')
+            volcano_plot_fp.write_bytes(b'PNG')
 
             return subprocess.CompletedProcess(cmd, 0, stdout='', stderr='')
 

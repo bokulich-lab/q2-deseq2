@@ -14,7 +14,7 @@ from q2_deseq2._deseq2 import run_deseq2
 
 def differential_expression_table(
     table: biom.Table,
-    condition,
+    condition: str,
     test_level: str = '',
     reference_level: str = '',
     min_total_count: int = 10,

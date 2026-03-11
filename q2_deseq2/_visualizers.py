@@ -83,7 +83,7 @@ def differential_expression(
     alpha: float = 0.05,
     cooks_cutoff: bool = True,
     independent_filtering: bool = True
-) -> None:
+):
     run_result = run_deseq2(
         table=table,
         condition=condition,

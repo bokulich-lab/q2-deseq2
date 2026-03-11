@@ -94,20 +94,25 @@ def _render_index_html(output_dir: Path, contrast_label: str, alpha: float) -> N
                 'transform': [
                     {
                         'type': 'formula',
-                        'as': 'sig_p',
+                        'as': 'plot_p',
                         'expr': 'datum.padj > 0 ? datum.padj : (datum.pvalue > 0 ? datum.pvalue : null)'
+                    },
+                    {
+                        'type': 'formula',
+                        'as': 'plot_p_source',
+                        'expr': "datum.padj > 0 ? 'padj' : (datum.pvalue > 0 ? 'pvalue' : 'none')"
                     },
                     {
                         'type': 'filter',
                         'expr': ('isValid(datum.log2FoldChange) && isFinite(datum.log2FoldChange) && '
-                                 'datum.sig_p != null && isFinite(datum.sig_p)')
+                                 'datum.plot_p != null && isFinite(datum.plot_p)')
                     },
-                    {'type': 'formula', 'as': 'neg_log10_p', 'expr': '-log(datum.sig_p)/LN10'},
+                    {'type': 'formula', 'as': 'neg_log10_p', 'expr': '-log(datum.plot_p)/LN10'},
                     {'type': 'formula', 'as': 'abs_lfc', 'expr': 'abs(datum.log2FoldChange)'},
                     {
                         'type': 'formula',
                         'as': 'sig_flag',
-                        'expr': 'datum.sig_p <= alphaCutoff && datum.abs_lfc >= lfcCutoff ? 1 : 0'
+                        'expr': 'datum.plot_p <= alphaCutoff && datum.abs_lfc >= lfcCutoff ? 1 : 0'
                     },
                     {
                         'type': 'formula',
@@ -134,6 +139,7 @@ def _render_index_html(output_dir: Path, contrast_label: str, alpha: float) -> N
                 'name': 'x',
                 'type': 'linear',
                 'domain': {'data': 'points', 'field': 'log2FoldChange'},
+                'range': 'width',
                 'nice': True,
                 'zero': False
             },
@@ -141,6 +147,7 @@ def _render_index_html(output_dir: Path, contrast_label: str, alpha: float) -> N
                 'name': 'y',
                 'type': 'linear',
                 'domain': {'data': 'points', 'field': 'neg_log10_p'},
+                'range': 'height',
                 'nice': True,
                 'zero': True
             },
@@ -224,6 +231,8 @@ def _render_index_html(output_dir: Path, contrast_label: str, alpha: float) -> N
                             'signal': (
                                 "{'gene_id': datum.feature_id, "
                                 "'log2FoldChange': format(datum.log2FoldChange, '.4f'), "
+                                "'plot_p': datum.plot_p, "
+                                "'plot_p_source': datum.plot_p_source, "
                                 "'padj': datum.padj, "
                                 "'pvalue': datum.pvalue, "
                                 "'baseMean': datum.baseMean}"

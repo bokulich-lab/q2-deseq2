@@ -23,6 +23,7 @@ class DESeq2RunResult(NamedTuple):
     normalized_counts: pd.DataFrame
     summary: str
     ma_plot_png: bytes
+    volcano_plot_png: bytes
     stdout: str
     stderr: str
     test_level: str
@@ -109,6 +110,7 @@ def _write_r_script(script_fp: Path) -> None:
         norm_counts_path <- get_arg("--normalized-counts")
         summary_path <- get_arg("--summary")
         ma_plot_path <- get_arg("--ma-plot")
+        volcano_plot_path <- get_arg("--volcano-plot")
         fit_type <- get_arg("--fit-type")
         alpha <- as.numeric(get_arg("--alpha"))
         cooks_cutoff <- parse_bool(get_arg("--cooks-cutoff"))
@@ -207,6 +209,37 @@ def _write_r_script(script_fp: Path) -> None:
         png(filename = ma_plot_path, width = 1200, height = 900)
         plotMA(res, alpha = alpha, main = paste("DESeq2 MA plot:", plot_label))
         dev.off()
+
+        y_values <- if ("padj" %in% colnames(res_df)) {
+          -log10(res_df$padj)
+        } else if ("pvalue" %in% colnames(res_df)) {
+          -log10(res_df$pvalue)
+        } else {
+          rep(NA_real_, nrow(res_df))
+        }
+        finite_idx <- is.finite(res_df$log2FoldChange) & is.finite(y_values)
+
+        png(filename = volcano_plot_path, width = 1200, height = 900)
+        if (any(finite_idx)) {
+          plot(
+            res_df$log2FoldChange[finite_idx],
+            y_values[finite_idx],
+            pch = 20,
+            col = rgb(0.2, 0.4, 0.7, 0.65),
+            xlab = "log2 fold change",
+            ylab = "-log10 adjusted p-value",
+            main = paste("DESeq2 Volcano Plot:", plot_label)
+          )
+          abline(v = 0, col = "#1F77B4", lty = 2)
+          if (alpha > 0 && alpha < 1) {
+            abline(h = -log10(alpha), col = "#D62728", lty = 3)
+          }
+        } else {
+          plot.new()
+          title(main = paste("DESeq2 Volcano Plot:", plot_label))
+          text(0.5, 0.5, "No finite points available for volcano plot.")
+        }
+        dev.off()
         """
     ).strip()
     script_fp.write_text(script + '\n', encoding='utf-8')
@@ -242,6 +275,7 @@ def run_deseq2(
         normalized_counts_fp = temp_path / 'normalized_counts.tsv'
         summary_fp = temp_path / 'deseq2_summary.txt'
         ma_plot_fp = temp_path / 'ma_plot.png'
+        volcano_plot_fp = temp_path / 'volcano_plot.png'
         script_fp = temp_path / 'run_deseq2.R'
 
         counts_df.to_csv(counts_fp, sep='\t', index_label='feature_id')
@@ -257,6 +291,7 @@ def run_deseq2(
             '--normalized-counts', str(normalized_counts_fp),
             '--summary', str(summary_fp),
             '--ma-plot', str(ma_plot_fp),
+            '--volcano-plot', str(volcano_plot_fp),
             '--fit-type', fit_type,
             '--alpha', str(alpha),
             '--cooks-cutoff', str(cooks_cutoff).lower(),
@@ -277,7 +312,8 @@ def run_deseq2(
             'deseq2_results.tsv': results_fp,
             'normalized_counts.tsv': normalized_counts_fp,
             'deseq2_summary.txt': summary_fp,
-            'ma_plot.png': ma_plot_fp
+            'ma_plot.png': ma_plot_fp,
+            'volcano_plot.png': volcano_plot_fp
         }
         for expected_name, path in expected_outputs.items():
             if not path.exists():
@@ -289,12 +325,14 @@ def run_deseq2(
         normalized_counts_df = pd.read_csv(normalized_counts_fp, sep='\t')
         summary = summary_fp.read_text(encoding='utf-8')
         ma_plot_png = ma_plot_fp.read_bytes()
+        volcano_plot_png = volcano_plot_fp.read_bytes()
 
         return DESeq2RunResult(
             results=results_df,
             normalized_counts=normalized_counts_df,
             summary=summary,
             ma_plot_png=ma_plot_png,
+            volcano_plot_png=volcano_plot_png,
             stdout=proc.stdout or '',
             stderr=proc.stderr or '',
             test_level=test_level,

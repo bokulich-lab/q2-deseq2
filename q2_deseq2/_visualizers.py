@@ -58,6 +58,7 @@ def _render_index_html(output_dir: Path, contrast_label: str, alpha: float) -> N
             <li><a href="normalized_counts.tsv">normalized_counts.tsv</a></li>
             <li><a href="deseq2_summary.txt">deseq2_summary.txt</a></li>
             <li><a href="ma_plot.png">ma_plot.png</a></li>
+            <li><a href="volcano_plot.png">volcano_plot.png</a></li>
             <li><a href="deseq2_stdout.txt">deseq2_stdout.txt</a></li>
             <li><a href="deseq2_stderr.txt">deseq2_stderr.txt</a></li>
           </ul>
@@ -101,6 +102,7 @@ def differential_expression(
     run_result.normalized_counts.to_csv(output_path / 'normalized_counts.tsv', sep='\t', index=False)
     (output_path / 'deseq2_summary.txt').write_text(run_result.summary, encoding='utf-8')
     (output_path / 'ma_plot.png').write_bytes(run_result.ma_plot_png)
+    (output_path / 'volcano_plot.png').write_bytes(run_result.volcano_plot_png)
     (output_path / 'deseq2_stdout.txt').write_text(run_result.stdout, encoding='utf-8')
     (output_path / 'deseq2_stderr.txt').write_text(run_result.stderr, encoding='utf-8')
 

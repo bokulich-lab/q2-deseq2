@@ -1,0 +1,19 @@
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# Changes here will be overwritten by Copier
+# NEVER EDIT MANUALLY
+# INSTEAD: run a recopy or update command
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+_commit: b686c2f
+_src_path: https://github.com/caporaso-lab/plugin-template
+author_email: mziemski@ethz.ch
+author_name: Michal Ziemski
+license: BSD-3-Clause
+module_name: q2_deseq2
+package_name: q2-deseq2
+plugin_description: A QIIME 2 plugin for differential abundance analysis powered by
+    DESeq2.
+plugin_name: deseq2
+plugin_short_description: DESeq2 integration for QIIME 2.
+project_url: https://example.com
+target_distro: amplicon

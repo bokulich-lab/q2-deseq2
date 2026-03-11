@@ -375,7 +375,7 @@ def _render_index_html(output_dir: Path, contrast_label: str, alpha: float) -> N
 def differential_expression(
     output_dir: str,
     table: biom.Table,
-    condition,
+    condition: str,
     test_level: str = '',
     reference_level: str = '',
     min_total_count: int = 10,

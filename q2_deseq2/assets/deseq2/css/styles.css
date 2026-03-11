@@ -1,0 +1,272 @@
+.report-title {
+  margin-bottom: 14px;
+  margin-top: 0;
+}
+
+.report-header {
+  margin-bottom: 16px;
+}
+
+.top-spaced-row {
+  margin-top: 18px;
+}
+
+#volcano-view,
+#ma-view {
+  width: 100%;
+  min-height: 520px;
+}
+
+#volcano-fallback img,
+#ma-fallback img {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  max-width: 100%;
+}
+
+.results-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 0;
+}
+
+.plot-toolbar,
+.results-toolbar {
+  align-items: center;
+  background: #f8f8f8;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 24px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+}
+
+.results-toolbar {
+  justify-content: flex-start;
+  margin-bottom: 16px;
+}
+
+.plot-toolbar-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+}
+
+.toolbar-field {
+  align-items: center;
+  display: inline-flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.toolbar-field label {
+  display: block;
+  color: #4b5563;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+
+.toolbar-field .form-control {
+  appearance: textfield;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: none;
+  color: #111827;
+  font-size: 18px;
+  font-weight: 600;
+  flex: 0 0 140px;
+  height: 42px;
+  max-width: 140px;
+  padding: 8px 12px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+  width: 100%;
+}
+
+.comparison-field .form-control {
+  flex: 0 1 300px;
+  max-width: 360px;
+}
+
+.toolbar-field .form-control:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.plot-reset-button {
+  margin-bottom: 0;
+}
+
+.paired-plots {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.plot-column {
+  min-width: 0;
+}
+
+.plot-column > .text-muted {
+  margin-bottom: 16px;
+}
+
+.plot-toolbar-summary {
+  align-items: flex-end;
+  display: flex;
+  flex: 1 1 260px;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  min-width: 260px;
+}
+
+.summary-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.summary-chip {
+  align-items: baseline;
+  background: #ffffff;
+  border: 1px solid #d7d7d7;
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 6px;
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+
+.summary-chip strong {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.summary-chip-live {
+  background: #fff3f2;
+  border-color: #efc2be;
+}
+
+.plot-legend-box {
+  align-items: center;
+  background: #f8f8f8;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 10px;
+  padding: 8px 18px 8px 10px;
+}
+
+.plot-legend-title {
+  color: #111827;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.plot-legend-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.plot-legend-item {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.plot-legend-swatch {
+  border-radius: 999px;
+  display: inline-block;
+  height: 10px;
+  width: 10px;
+}
+
+.plot-legend-swatch-volcano-muted,
+.plot-legend-swatch-ma-muted {
+  background: #9ca3af;
+}
+
+.plot-legend-swatch-volcano-sig {
+  background: #dc2626;
+}
+
+.plot-legend-swatch-ma-sig {
+  background: #1f78b4;
+}
+
+@media (max-width: 991px) {
+  .plot-toolbar,
+  .results-toolbar {
+    align-items: flex-start;
+  }
+
+  .plot-toolbar-controls {
+    align-items: flex-start;
+  }
+
+  .toolbar-field {
+    align-items: flex-start;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 170px;
+  }
+
+  .toolbar-field .form-control {
+    flex: 0 0 auto;
+    max-width: 140px;
+  }
+
+  .comparison-field .form-control {
+    max-width: 100%;
+    min-width: 220px;
+  }
+
+  .plot-toolbar-summary {
+    justify-content: flex-start;
+  }
+
+  .summary-chips {
+    justify-content: flex-start;
+  }
+
+  .paired-plots {
+    grid-template-columns: 1fr;
+  }
+}
+
+table.dataTable tbody td {
+  word-break: break-word;
+}
+
+table.dataTable,
+table.dataTable thead th,
+table.dataTable thead td,
+table.dataTable tbody th,
+table.dataTable tbody td {
+  border: none !important;
+}
+
+div.dt-container div.dt-layout-row:first-child,
+div.dt-container div.dt-layout-row:last-child {
+  border: none !important;
+}
+
+div.table-responsive {
+  border: none;
+}

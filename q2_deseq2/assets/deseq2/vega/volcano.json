@@ -1,0 +1,168 @@
+{
+  "$schema": "https://vega.github.io/schema/vega/v5.json",
+  "description": "Interactive DESeq2 volcano plot.",
+  "autosize": {
+    "type": "fit-x",
+    "contains": "padding",
+    "resize": true
+  },
+  "width": 860,
+  "height": 500,
+  "padding": {"left": 15, "top": 10, "right": 20, "bottom": 60},
+  "signals": [
+    {"name": "alphaCutoff", "value": 0.05},
+    {"name": "lfcCutoff", "value": 1.0},
+    {
+      "name": "hoveredFeatureId",
+      "value": null,
+      "on": [
+        {"events": "@pointsMark:mouseover", "update": "datum.feature_id"},
+        {"events": "@pointsMark:mouseout", "update": "null"}
+      ]
+    },
+    {"name": "linkedHoveredFeatureId", "value": null}
+  ],
+  "data": [
+    {
+      "name": "points",
+      "values": [],
+      "transform": [
+        {"type": "formula", "as": "plot_p", "expr": "datum.padj > 0 ? datum.padj : null"},
+        {
+          "type": "filter",
+          "expr": "isValid(datum.log2FoldChange) && isFinite(datum.log2FoldChange) && datum.plot_p != null && isFinite(datum.plot_p)"
+        },
+        {"type": "formula", "as": "neg_log10_p", "expr": "-log(datum.plot_p)/LN10"},
+        {"type": "formula", "as": "abs_lfc", "expr": "abs(datum.log2FoldChange)"},
+        {
+          "type": "formula",
+          "as": "sig_flag",
+          "expr": "datum.plot_p <= alphaCutoff && datum.abs_lfc >= lfcCutoff ? 1 : 0"
+        },
+        {"type": "formula", "as": "sig_label", "expr": "datum.sig_flag ? 'Significant' : 'Not significant'"}
+      ]
+    }
+  ],
+  "scales": [
+    {
+      "name": "x",
+      "type": "linear",
+      "domain": {"data": "points", "field": "log2FoldChange"},
+      "range": "width",
+      "nice": true,
+      "zero": false
+    },
+    {
+      "name": "y",
+      "type": "linear",
+      "domain": {"data": "points", "field": "neg_log10_p"},
+      "range": "height",
+      "nice": true,
+      "zero": true
+    },
+    {
+      "name": "color",
+      "type": "ordinal",
+      "domain": ["Not significant", "Significant"],
+      "range": ["#9ca3af", "#dc2626"]
+    }
+  ],
+  "axes": [
+    {
+      "orient": "bottom",
+      "scale": "x",
+      "title": "log2 fold change",
+      "labelFontSize": 14,
+      "titleFontSize": 16
+    },
+    {
+      "orient": "left",
+      "scale": "y",
+      "title": "-log10 adjusted p-value",
+      "labelFontSize": 14,
+      "titleFontSize": 16
+    }
+  ],
+  "marks": [
+    {
+      "type": "rule",
+      "encode": {
+        "enter": {
+          "stroke": {"value": "#dc2626"},
+          "strokeDash": {"value": [5, 4]},
+          "strokeWidth": {"value": 1}
+        },
+        "update": {
+          "x": {"value": 0},
+          "x2": {"signal": "width"},
+          "y": {"scale": "y", "signal": "-log(alphaCutoff)/LN10"}
+        }
+      }
+    },
+    {
+      "type": "rule",
+      "encode": {
+        "enter": {
+          "stroke": {"value": "#2563eb"},
+          "strokeDash": {"value": [4, 4]},
+          "strokeWidth": {"value": 1}
+        },
+        "update": {
+          "x": {"scale": "x", "signal": "lfcCutoff"},
+          "x2": {"scale": "x", "signal": "lfcCutoff"},
+          "y": {"value": 0},
+          "y2": {"signal": "height"}
+        }
+      }
+    },
+    {
+      "type": "rule",
+      "encode": {
+        "enter": {
+          "stroke": {"value": "#2563eb"},
+          "strokeDash": {"value": [4, 4]},
+          "strokeWidth": {"value": 1}
+        },
+        "update": {
+          "x": {"scale": "x", "signal": "-lfcCutoff"},
+          "x2": {"scale": "x", "signal": "-lfcCutoff"},
+          "y": {"value": 0},
+          "y2": {"signal": "height"}
+        }
+      }
+    },
+    {
+      "type": "symbol",
+      "name": "pointsMark",
+      "from": {"data": "points"},
+      "encode": {
+        "enter": {
+          "size": {"value": 36},
+          "opacity": {"value": 0.75},
+          "stroke": {"value": "#ffffff"},
+          "strokeWidth": {"value": 0.4}
+        },
+        "update": {
+          "x": {"scale": "x", "field": "log2FoldChange"},
+          "y": {"scale": "y", "field": "neg_log10_p"},
+          "fill": {"scale": "color", "field": "sig_label"},
+          "opacity": {
+            "signal": "(hoveredFeatureId || linkedHoveredFeatureId) ? (datum.feature_id === (hoveredFeatureId || linkedHoveredFeatureId) ? 1 : 0.25) : 0.75"
+          },
+          "size": {
+            "signal": "datum.feature_id === (hoveredFeatureId || linkedHoveredFeatureId) ? 110 : 36"
+          },
+          "stroke": {
+            "signal": "datum.feature_id === (hoveredFeatureId || linkedHoveredFeatureId) ? '#111827' : '#ffffff'"
+          },
+          "strokeWidth": {
+            "signal": "datum.feature_id === (hoveredFeatureId || linkedHoveredFeatureId) ? 1.4 : 0.4"
+          },
+          "tooltip": {
+            "signal": "{'feature_id': datum.feature_id, 'gene_name': datum.gene_name, 'product': datum.product, 'log2FoldChange': format(datum.log2FoldChange, '.4f'), 'padj': datum.padj, 'pvalue': datum.pvalue, 'baseMean': datum.baseMean}"
+          }
+        }
+      }
+    }
+  ]
+}

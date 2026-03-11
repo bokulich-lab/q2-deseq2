@@ -1,0 +1,10 @@
+channels:
+- https://packages.qiime2.org/qiime2/2026.1/moshpit/released
+- conda-forge
+- bioconda
+dependencies:
+  - qiime2-moshpit
+  - bioconductor-deseq2
+  - pip
+  - pip:
+    - q2-deseq2@git+https://github.com/bokulich-lab/q2-deseq2.git@2026.1.0

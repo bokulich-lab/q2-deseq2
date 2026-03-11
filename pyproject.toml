@@ -1,15 +1,15 @@
 [project]
 name = "q2-deseq2"
 authors = [
-    { name = "Michal Ziemski", email = "mziemski@ethz.ch"}
+    { name = "Michal Ziemski", email = "michal.ziemski@hest.ethz.ch"}
 ]
-description = "DESeq2 integration for QIIME 2."
+description = "QIIME 2 plugin for differential abundance analysis with DESeq2."
 readme = {file = "README.md", content-type = "text/markdown"}
 license = {file = "LICENSE"}
 dynamic = ["version"]
 
 [project.urls]
-Homepage = "https://example.com"
+Homepage = "https://github.com/bokulich-lab/q2-deseq2"
 
 [project.entry-points.'qiime2.plugins']
 "q2-deseq2" = "q2_deseq2.plugin_setup:plugin"

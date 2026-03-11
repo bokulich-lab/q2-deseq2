@@ -1,0 +1,133 @@
+{
+  "$schema": "https://vega.github.io/schema/vega/v5.json",
+  "description": "Interactive DESeq2 MA plot.",
+  "autosize": {
+    "type": "fit-x",
+    "contains": "padding",
+    "resize": true
+  },
+  "width": 860,
+  "height": 500,
+  "padding": {"left": 15, "top": 10, "right": 20, "bottom": 60},
+  "signals": [
+    {"name": "alphaCutoff", "value": 0.05},
+    {"name": "lfcCutoff", "value": 1.0},
+    {
+      "name": "hoveredFeatureId",
+      "value": null,
+      "on": [
+        {"events": "@pointsMark:mouseover", "update": "datum.feature_id"},
+        {"events": "@pointsMark:mouseout", "update": "null"}
+      ]
+    },
+    {"name": "linkedHoveredFeatureId", "value": null}
+  ],
+  "data": [
+    {
+      "name": "points",
+      "values": [],
+      "transform": [
+        {"type": "formula", "as": "plot_p", "expr": "datum.padj > 0 ? datum.padj : null"},
+        {
+          "type": "filter",
+          "expr": "isValid(datum.baseMean) && isFinite(datum.baseMean) && datum.baseMean > 0 && isValid(datum.log2FoldChange) && isFinite(datum.log2FoldChange)"
+        },
+        {"type": "formula", "as": "abs_lfc", "expr": "abs(datum.log2FoldChange)"},
+        {
+          "type": "formula",
+          "as": "sig_label",
+          "expr": "datum.plot_p != null && datum.plot_p <= alphaCutoff && datum.abs_lfc >= lfcCutoff ? 'Significant' : 'Not significant'"
+        }
+      ]
+    }
+  ],
+  "scales": [
+    {
+      "name": "x",
+      "type": "log",
+      "domain": {"data": "points", "field": "baseMean"},
+      "range": "width",
+      "nice": true
+    },
+    {
+      "name": "y",
+      "type": "linear",
+      "domain": {"data": "points", "field": "log2FoldChange"},
+      "range": "height",
+      "nice": true,
+      "zero": false
+    },
+    {
+      "name": "color",
+      "type": "ordinal",
+      "domain": ["Not significant", "Significant"],
+      "range": ["#9ca3af", "#1f78b4"]
+    }
+  ],
+  "axes": [
+    {
+      "orient": "bottom",
+      "scale": "x",
+      "title": "Mean normalized count (baseMean)",
+      "labelFontSize": 13,
+      "titleFontSize": 15
+    },
+    {
+      "orient": "left",
+      "scale": "y",
+      "title": "log2 fold change",
+      "labelFontSize": 13,
+      "titleFontSize": 15
+    }
+  ],
+  "marks": [
+    {
+      "type": "rule",
+      "encode": {
+        "enter": {
+          "stroke": {"value": "#4b5563"},
+          "strokeDash": {"value": [5, 4]},
+          "strokeWidth": {"value": 1}
+        },
+        "update": {
+          "x": {"value": 0},
+          "x2": {"signal": "width"},
+          "y": {"scale": "y", "value": 0}
+        }
+      }
+    },
+    {
+      "type": "symbol",
+      "name": "pointsMark",
+      "from": {"data": "points"},
+      "encode": {
+        "enter": {
+          "size": {"value": 30},
+          "opacity": {"value": 0.75},
+          "stroke": {"value": "#ffffff"},
+          "strokeWidth": {"value": 0.4}
+        },
+        "update": {
+          "x": {"scale": "x", "field": "baseMean"},
+          "y": {"scale": "y", "field": "log2FoldChange"},
+          "fill": {"scale": "color", "field": "sig_label"},
+          "opacity": {
+            "signal": "(hoveredFeatureId || linkedHoveredFeatureId) ? (datum.feature_id === (hoveredFeatureId || linkedHoveredFeatureId) ? 1 : 0.25) : 0.75"
+          },
+          "size": {
+            "signal": "datum.feature_id === (hoveredFeatureId || linkedHoveredFeatureId) ? 90 : 30"
+          },
+          "stroke": {
+            "signal": "datum.feature_id === (hoveredFeatureId || linkedHoveredFeatureId) ? '#111827' : '#ffffff'"
+          },
+          "strokeWidth": {
+            "signal": "datum.feature_id === (hoveredFeatureId || linkedHoveredFeatureId) ? 1.4 : 0.4"
+          },
+          "tooltip": {
+            "signal": "{'feature_id': datum.feature_id, 'gene_name': datum.gene_name, 'product': datum.product, 'baseMean': datum.baseMean, 'log2FoldChange': format(datum.log2FoldChange, '.4f'), 'padj': datum.padj, 'pvalue': datum.pvalue}"
+          }
+        }
+      }
+    }
+  ]
+}

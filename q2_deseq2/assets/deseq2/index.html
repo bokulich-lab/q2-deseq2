@@ -1,0 +1,159 @@
+{% extends "tabbed.html" %}
+
+{% block head %}
+<title>DESeq2 differential abundance overview</title>
+<link href="css/styles.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/vega@5" type="text/javascript"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-embed@6" type="text/javascript"></script>
+<script src="js/linked_plots.js" type="text/javascript"></script>
+{% endblock %}
+
+{% block tabcontent %}
+<div class="row top-spaced-row">
+  <div class="col-lg-12">
+    <div class="report-header">
+      <h3 class="report-title">DESeq2 differential abundance overview</h3>
+      <p class="text-muted">
+        Inspect interactive differential-abundance plots for
+        <code data-selected-comparison>{{ default_comparison }}</code>.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-lg-12">
+    <div class="plot-toolbar">
+      <div class="plot-toolbar-controls">
+        <div class="toolbar-field comparison-field">
+          <label for="comparison-select">Comparison</label>
+          <select class="form-control input-sm" id="comparison-select"></select>
+        </div>
+        <div class="toolbar-field">
+          <label for="alpha-cutoff-input">adj. p-value</label>
+          <input
+            class="form-control input-sm"
+            id="alpha-cutoff-input"
+            type="number"
+            min="0.001"
+            max="0.25"
+            step="0.001"
+            value="{{ alpha }}"
+            inputmode="decimal"
+          />
+        </div>
+        <div class="toolbar-field">
+          <label for="lfc-cutoff-input">|log2FC|</label>
+          <input
+            class="form-control input-sm"
+            id="lfc-cutoff-input"
+            type="number"
+            min="0.0"
+            max="5.0"
+            step="0.1"
+            value="1.0"
+            inputmode="decimal"
+          />
+        </div>
+        <button id="plot-controls-reset" type="button" class="btn btn-default plot-reset-button">
+          Reset
+        </button>
+      </div>
+
+      <div class="plot-toolbar-summary">
+        <div class="summary-chips">
+          <span class="summary-chip summary-chip-live">
+            <strong id="summary-significant-features">{{ summary.significant_features }}</strong>
+            <span>selected</span>
+          </span>
+          <span class="summary-chip">
+            <strong id="summary-total-features">{{ summary.total_features }}</strong>
+            <span>tested</span>
+          </span>
+          {% if summary.annotated_features is defined %}
+          <span class="summary-chip">
+            <strong id="summary-annotated-features">{{ summary.annotated_features }}</strong>
+            <span>annotated</span>
+          </span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="paired-plots">
+      <section class="plot-column">
+        <div class="plot-legend-box">
+          <span class="plot-legend-title">Volcano plot</span>
+          <div class="plot-legend-items">
+            <span class="plot-legend-item">
+              <span class="plot-legend-swatch plot-legend-swatch-volcano-muted"></span>
+              Not significant
+            </span>
+            <span class="plot-legend-item">
+              <span class="plot-legend-swatch plot-legend-swatch-volcano-sig"></span>
+              Significant
+            </span>
+          </div>
+        </div>
+        <p class="text-muted">
+          Inspect log2 fold change against significance for
+          <code data-selected-comparison>{{ default_comparison }}</code>.
+        </p>
+        <div id="volcano-view"></div>
+        <div id="volcano-error" class="alert alert-danger" hidden></div>
+        <div id="volcano-fallback">
+          <p class="text-muted">Static fallback image:</p>
+          <img src="volcano_plot.png" alt="Static volcano plot" class="img-responsive" />
+        </div>
+      </section>
+
+      <section class="plot-column">
+        <div class="plot-legend-box">
+          <span class="plot-legend-title">MA plot</span>
+          <div class="plot-legend-items">
+            <span class="plot-legend-item">
+              <span class="plot-legend-swatch plot-legend-swatch-ma-muted"></span>
+              Not significant
+            </span>
+            <span class="plot-legend-item">
+              <span class="plot-legend-swatch plot-legend-swatch-ma-sig"></span>
+              Significant
+            </span>
+          </div>
+        </div>
+        <p class="text-muted">
+          Inspect log2 fold change against mean normalized abundance for
+          <code data-selected-comparison>{{ default_comparison }}</code>.
+        </p>
+        <div id="ma-view"></div>
+        <div id="ma-error" class="alert alert-danger" hidden></div>
+        <div id="ma-fallback">
+          <p class="text-muted">Static fallback image:</p>
+          <img src="ma_plot.png" alt="Static MA plot" class="img-responsive" />
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script id="vega_volcano_spec" type="application/json">
+{{ vega_volcano_spec | safe }}
+</script>
+<script id="vega_ma_spec" type="application/json">
+{{ vega_ma_spec | safe }}
+</script>
+<script id="results_data_path" type="application/json">
+{{ results_data_path_json | safe }}
+</script>
+<script id="comparison_options" type="application/json">
+{{ comparison_options_json | safe }}
+</script>
+<script id="default_comparison" type="application/json">
+{{ default_comparison_json | safe }}
+</script>
+{% endblock %}
+
+{% block footer %}
+{% set loading_selector = '#volcano-view' %}
+{% include 'js-error-handler.html' %}
+{% endblock %}

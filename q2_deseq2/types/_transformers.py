@@ -8,17 +8,17 @@
 
 import pandas as pd
 
-from q2_deseq2._formats import DESeq2StatsFormat
+from . import DESeq2StatsFormat
 from q2_deseq2.plugin_setup import plugin
 
 
 @plugin.register_transformer
 def _deseq2_stats_to_dataframe(ff: DESeq2StatsFormat) -> pd.DataFrame:
-    return pd.read_csv(str(ff), sep='\t')
+    return pd.read_csv(str(ff), sep="\t")
 
 
 @plugin.register_transformer
 def _dataframe_to_deseq2_stats(data: pd.DataFrame) -> DESeq2StatsFormat:
     ff = DESeq2StatsFormat()
-    data.to_csv(str(ff), sep='\t', index=False)
+    data.to_csv(str(ff), sep="\t", index=False)
     return ff

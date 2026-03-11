@@ -1,0 +1,87 @@
+{% extends "tabbed.html" %}
+
+{% block head %}
+<title>DESeq2 result table</title>
+<link href="css/styles.css" rel="stylesheet" />
+<link href="https://cdn.datatables.net/2.3.4/css/dataTables.dataTables.min.css" rel="stylesheet" />
+<script src="https://cdn.datatables.net/2.3.4/js/dataTables.min.js" type="text/javascript"></script>
+<script src="js/table.js" type="text/javascript"></script>
+{% endblock %}
+
+{% block tabcontent %}
+<div class="row top-spaced-row">
+  <div class="col-lg-12">
+    <div class="report-header">
+      <h3 class="report-title">DESeq2 result table</h3>
+      <p class="text-muted">
+        Explore the full result table for
+        <code id="results-selected-comparison">{{ default_comparison }}</code>.
+        Use the controls below to switch contrasts and filter rows by adjusted
+        p-value and absolute log2 fold change; download links below include all
+        comparisons from this run.
+      </p>
+
+      <div class="results-toolbar">
+        <div class="plot-toolbar-controls">
+          <div class="toolbar-field comparison-field">
+            <label for="results-comparison-select">Comparison</label>
+            <select class="form-control input-sm" id="results-comparison-select"></select>
+          </div>
+          <div class="toolbar-field">
+            <label for="results-alpha-cutoff-input">adj. p-value</label>
+            <input
+              class="form-control input-sm"
+              id="results-alpha-cutoff-input"
+              type="number"
+              min="0.001"
+              max="0.25"
+              step="0.001"
+              value="0.05"
+              inputmode="decimal"
+            />
+          </div>
+          <div class="toolbar-field">
+            <label for="results-lfc-cutoff-input">|log2FC|</label>
+            <input
+              class="form-control input-sm"
+              id="results-lfc-cutoff-input"
+              type="number"
+              min="0.0"
+              max="5.0"
+              step="0.1"
+              value="1.0"
+              inputmode="decimal"
+            />
+          </div>
+          <button id="results-filter-reset" type="button" class="btn btn-default plot-reset-button">
+            Reset
+          </button>
+        </div>
+      </div>
+
+      <div class="results-actions">
+        <a href="deseq2_results.tsv" class="btn btn-default">Download all results TSV</a>
+        {% if include_annotated_results_file %}
+        <a href="deseq2_results_annotated.tsv" class="btn btn-default">Download all annotated TSVs</a>
+        {% endif %}
+        <a href="normalized_counts.tsv" class="btn btn-default">Download normalized counts TSV</a>
+      </div>
+    </div>
+
+    <div id="results-table-error" class="alert alert-danger" hidden></div>
+    <div class="table-responsive">
+      <table id="results-table" class="display compact stripe" style="width:100%"></table>
+    </div>
+  </div>
+</div>
+
+<script id="results_data_path" type="application/json">
+{{ results_data_path_json | safe }}
+</script>
+<script id="comparison_options" type="application/json">
+{{ comparison_options_json | safe }}
+</script>
+<script id="default_comparison" type="application/json">
+{{ default_comparison_json | safe }}
+</script>
+{% endblock %}

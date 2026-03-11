@@ -1,0 +1,5 @@
+sample-id	condition
+#q2:types	categorical
+Ghost1	control
+Ghost2	treated
+Ghost3	control

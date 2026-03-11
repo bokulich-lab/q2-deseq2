@@ -6,8 +6,6 @@
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
 
-from __future__ import annotations
-
 import html
 from pathlib import Path
 import textwrap

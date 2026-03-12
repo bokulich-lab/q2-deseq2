@@ -17,7 +17,10 @@ import numpy as np
 import pandas as pd
 
 from q2_deseq2._methods import differential_expression_table
-from q2_deseq2._visualizers import differential_expression
+from q2_deseq2._visualizers import (
+    _load_loci_annotation_table,
+    differential_expression
+)
 
 
 class _FakeMetadataColumn:
@@ -26,6 +29,11 @@ class _FakeMetadataColumn:
 
     def to_series(self):
         return self._series.copy()
+
+
+class _FakeLociInput:
+    def __init__(self, path):
+        self.path = Path(path)
 
 
 class DifferentialExpressionTests(unittest.TestCase):
@@ -48,6 +56,26 @@ class DifferentialExpressionTests(unittest.TestCase):
             'sample-3': 'treated',
             'sample-4': 'treated'
         })
+
+    def test_load_loci_annotation_table(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            gff_path = Path(temp_dir) / 'genome-a.gff'
+            gff_path.write_text(
+                '##gff-version 3\n'
+                'contig1\tsrc\tgene\t1\t100\t.\t+\t.\tID=gene-1;gene=dnaA;product=Replication protein\n'
+                'contig1\tsrc\tCDS\t1\t100\t.\t+\t0\tID=cds-1;Parent=gene-1;product=Replication protein\n',
+                encoding='utf-8'
+            )
+
+            observed = _load_loci_annotation_table(_FakeLociInput(temp_dir))
+
+            self.assertIn('feature_id', observed.columns)
+            self.assertIn('gene_name', observed.columns)
+            self.assertIn('product', observed.columns)
+
+            annotation = observed.set_index('feature_id')
+            self.assertEqual(annotation.loc['gene-1', 'gene_name'], 'dnaA')
+            self.assertEqual(annotation.loc['gene-1', 'product'], 'Replication protein')
 
     @mock.patch('q2_deseq2._deseq2.subprocess.run')
     def test_differential_expression_outputs(self, run_mock):
@@ -167,3 +195,59 @@ class DifferentialExpressionTests(unittest.TestCase):
                     condition=self._build_condition(),
                     min_total_count=0
                 )
+
+    @mock.patch('q2_deseq2._deseq2.subprocess.run')
+    def test_differential_expression_with_loci_annotations(self, run_mock):
+        def fake_run(cmd, check, capture_output, text):
+            results_fp = Path(cmd[cmd.index('--results') + 1])
+            normalized_counts_fp = Path(cmd[cmd.index('--normalized-counts') + 1])
+            summary_fp = Path(cmd[cmd.index('--summary') + 1])
+            ma_plot_fp = Path(cmd[cmd.index('--ma-plot') + 1])
+            volcano_plot_fp = Path(cmd[cmd.index('--volcano-plot') + 1])
+
+            results_fp.write_text(
+                'feature_id\tbaseMean\tlog2FoldChange\tpvalue\tpadj\n'
+                'gene-1\t200\t1.75\t0.0002\t0.0015\n',
+                encoding='utf-8'
+            )
+            normalized_counts_fp.write_text(
+                'feature_id\tsample-1\tsample-2\tsample-3\tsample-4\n'
+                'gene-1\t121.1\t130.5\t290.2\t305.6\n',
+                encoding='utf-8'
+            )
+            summary_fp.write_text('summary line\n', encoding='utf-8')
+            ma_plot_fp.write_bytes(b'PNG')
+            volcano_plot_fp.write_bytes(b'PNG')
+
+            return subprocess.CompletedProcess(cmd, 0, stdout='ok', stderr='')
+
+        run_mock.side_effect = fake_run
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            annotation_dir = Path(temp_dir) / 'loci'
+            annotation_dir.mkdir()
+            (annotation_dir / 'genome-a.gff').write_text(
+                '##gff-version 3\n'
+                'contig1\tsrc\tgene\t1\t100\t.\t+\t.\tID=gene-1;gene=dnaA;product=Replication protein\n',
+                encoding='utf-8'
+            )
+
+            output_dir = Path(temp_dir) / 'viz'
+            differential_expression(
+                output_dir=str(output_dir),
+                table=self._build_table(),
+                condition=self._build_condition(),
+                annotations=_FakeLociInput(annotation_dir),
+                min_total_count=5,
+                fit_type='parametric',
+                alpha=0.05
+            )
+
+            annotated_results_fp = output_dir / 'deseq2_results_annotated.tsv'
+            self.assertTrue(annotated_results_fp.exists())
+            annotated_results = annotated_results_fp.read_text(encoding='utf-8')
+            self.assertIn('gene_name', annotated_results)
+            self.assertIn('dnaA', annotated_results)
+
+            index_html = (output_dir / 'index.html').read_text(encoding='utf-8')
+            self.assertIn('deseq2_results_annotated.tsv', index_html)

@@ -12,6 +12,7 @@ from qiime2.plugin import (
 )
 from q2_types.feature_data import FeatureData
 from q2_types.feature_table import FeatureTable, Frequency
+from q2_types.genome_data import GenomeData, Loci
 from q2_deseq2 import __version__
 from q2_deseq2._formats import DESeq2StatsDirectoryFormat, DESeq2StatsFormat
 from q2_deseq2._methods import differential_expression_table
@@ -81,7 +82,10 @@ plugin.methods.register_function(
 
 plugin.visualizers.register_function(
     function=differential_expression,
-    inputs={'table': FeatureTable[Frequency]},
+    inputs={
+        'table': FeatureTable[Frequency],
+        'annotations': GenomeData[Loci]
+    },
     parameters={
         'condition': MetadataColumn[Categorical],
         'test_level': Str,
@@ -93,7 +97,9 @@ plugin.visualizers.register_function(
         'independent_filtering': Bool
     },
     input_descriptions={
-        'table': 'A gene count table where features are genes and samples are RNA-seq samples.'
+        'table': 'A gene count table where features are genes and samples are RNA-seq samples.',
+        'annotations': ('Optional GenomeData[Loci] annotations in GFF3 format. '
+                        'When provided, gene names/products are merged into report outputs.')
     },
     parameter_descriptions={
         'condition': ('Categorical sample metadata column defining experimental condition. '

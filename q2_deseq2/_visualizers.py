@@ -6,16 +6,18 @@
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
 
-import json
+from __future__ import annotations
+
 import html
+import json
 from pathlib import Path
 import textwrap
-
-import pandas as pd
+from urllib.parse import unquote
 
 import biom
+import pandas as pd
 
-from q2_deseq2._deseq2 import run_deseq2
+from q2_deseq2._deseq2 import DESeq2RunResult, run_deseq2
 
 
 def _value_or_none(value):
@@ -27,6 +29,94 @@ def _value_or_none(value):
         return None
 
 
+def _parse_gff3_attributes(raw_attributes: str) -> dict[str, str]:
+    parsed = {}
+    for entry in raw_attributes.split(';'):
+        entry = entry.strip()
+        if not entry:
+            continue
+        if '=' in entry:
+            key, value = entry.split('=', 1)
+        else:
+            key, value = entry, ''
+        parsed[key.strip()] = unquote(value.strip())
+    return parsed
+
+
+def _first_non_empty(attributes: dict[str, str], keys: list[str]) -> str | None:
+    for key in keys:
+        value = attributes.get(key, '').strip()
+        if value:
+            return value.split(',')[0]
+    return None
+
+
+def _load_loci_annotation_table(annotations) -> pd.DataFrame:
+    loci_path = getattr(annotations, 'path', annotations)
+    loci_path = Path(str(loci_path))
+
+    if loci_path.is_file() and loci_path.suffix == '.gff':
+        gff_paths = [loci_path]
+    else:
+        gff_paths = sorted(loci_path.glob('*.gff'))
+
+    if not gff_paths:
+        return pd.DataFrame(columns=['feature_id', 'gene_name', 'product'])
+
+    annotation_lookup = {}
+    for gff_path in gff_paths:
+        with gff_path.open('r', encoding='utf-8') as handle:
+            for line in handle:
+                if not line.strip() or line.startswith('#'):
+                    continue
+
+                parts = line.rstrip('\n').split('\t')
+                if len(parts) != 9:
+                    continue
+
+                attributes = _parse_gff3_attributes(parts[8])
+                feature_ids = []
+                for key in ['ID', 'locus_tag', 'Name', 'gene', 'Parent']:
+                    value = attributes.get(key, '').strip()
+                    if value:
+                        feature_ids.extend(v.strip() for v in value.split(',') if v.strip())
+
+                if not feature_ids:
+                    continue
+
+                gene_name = _first_non_empty(attributes, ['gene', 'Name', 'gene_name', 'locus_tag'])
+                product = _first_non_empty(attributes, ['product', 'description', 'Note'])
+
+                for feature_id in feature_ids:
+                    record = annotation_lookup.get(feature_id, {
+                        'feature_id': feature_id,
+                        'gene_name': None,
+                        'product': None
+                    })
+                    if record['gene_name'] is None and gene_name is not None:
+                        record['gene_name'] = gene_name
+                    if record['product'] is None and product is not None:
+                        record['product'] = product
+                    annotation_lookup[feature_id] = record
+
+    if not annotation_lookup:
+        return pd.DataFrame(columns=['feature_id', 'gene_name', 'product'])
+
+    annotation_table = pd.DataFrame(annotation_lookup.values())
+    annotation_table['feature_id'] = annotation_table['feature_id'].astype(str)
+    return annotation_table
+
+
+def _merge_results_with_annotations(
+    result_table: pd.DataFrame, annotation_table: pd.DataFrame
+) -> pd.DataFrame:
+    merged = result_table.copy()
+    merged['feature_id'] = merged['feature_id'].astype(str)
+    if not annotation_table.empty:
+        merged = merged.merge(annotation_table, how='left', on='feature_id')
+    return merged
+
+
 def _build_volcano_records(result_table: pd.DataFrame) -> list[dict]:
     records = []
     for _, row in result_table.iterrows():
@@ -34,8 +124,18 @@ def _build_volcano_records(result_table: pd.DataFrame) -> list[dict]:
         if pd.isna(feature_id):
             feature_id = ''
 
+        gene_name = row.get('gene_name')
+        if pd.isna(gene_name):
+            gene_name = None
+
+        product = row.get('product')
+        if pd.isna(product):
+            product = None
+
         records.append({
             'feature_id': str(feature_id),
+            'gene_name': None if gene_name is None else str(gene_name),
+            'product': None if product is None else str(product),
             'log2FoldChange': _value_or_none(row.get('log2FoldChange')),
             'pvalue': _value_or_none(row.get('pvalue')),
             'padj': _value_or_none(row.get('padj')),
@@ -45,9 +145,8 @@ def _build_volcano_records(result_table: pd.DataFrame) -> list[dict]:
     return records
 
 
-def _render_index_html(output_dir: Path, contrast_label: str, alpha: float) -> None:
-    results_fp = output_dir / 'deseq2_results.tsv'
-    result_table = pd.read_csv(results_fp, sep='\t')
+def _render_index_html(output_dir: Path, result_table: pd.DataFrame, contrast_label: str,
+                       alpha: float, include_annotated_results_file: bool) -> None:
     volcano_records = _build_volcano_records(result_table)
     volcano_spec = {
         '$schema': 'https://vega.github.io/schema/vega/v5.json',
@@ -77,14 +176,6 @@ def _render_index_html(output_dir: Path, contrast_label: str, alpha: float) -> N
                     'step': 0.1,
                     'name': '|log2FC| cutoff '
                 }
-            },
-            {
-                'name': 'hover',
-                'value': None,
-                'on': [
-                    {'events': 'symbol:mouseover', 'update': 'datum'},
-                    {'events': 'symbol:mouseout', 'update': 'null'}
-                ]
             }
         ],
         'data': [
@@ -230,6 +321,8 @@ def _render_index_html(output_dir: Path, contrast_label: str, alpha: float) -> N
                         'tooltip': {
                             'signal': (
                                 "{'gene_id': datum.feature_id, "
+                                "'gene_name': datum.gene_name, "
+                                "'product': datum.product, "
                                 "'log2FoldChange': format(datum.log2FoldChange, '.4f'), "
                                 "'plot_p': datum.plot_p, "
                                 "'plot_p_source': datum.plot_p_source, "
@@ -270,16 +363,22 @@ def _render_index_html(output_dir: Path, contrast_label: str, alpha: float) -> N
     }
     volcano_spec_json = json.dumps(volcano_spec, separators=(',', ':'))
 
-    preview_columns = [
-        column for column in ['feature_id', 'log2FoldChange', 'pvalue', 'padj']
+    preview_columns = ['feature_id']
+    for optional_column in ['gene_name', 'product']:
+        if optional_column in result_table.columns and result_table[optional_column].notna().any():
+            preview_columns.append(optional_column)
+    preview_columns.extend(
+        column for column in ['log2FoldChange', 'pvalue', 'padj']
         if column in result_table.columns
-    ]
-    if preview_columns:
-        preview_table = result_table.loc[:, preview_columns].head(25)
-    else:
-        preview_table = result_table.head(25)
-
+    )
+    preview_table = result_table.loc[:, preview_columns].head(25)
     preview_html = preview_table.to_html(index=False, border=0, classes='preview')
+
+    additional_file_list = ''
+    if include_annotated_results_file:
+        additional_file_list = (
+            '<li><a href="deseq2_results_annotated.tsv">deseq2_results_annotated.tsv</a></li>'
+        )
 
     index_html_template = textwrap.dedent(
         """\
@@ -334,6 +433,7 @@ def _render_index_html(output_dir: Path, contrast_label: str, alpha: float) -> N
             <h2>Output Files</h2>
             <ul>
               <li><a href="deseq2_results.tsv">deseq2_results.tsv</a></li>
+              __ANNOTATED_RESULTS_FILE__
               <li><a href="normalized_counts.tsv">normalized_counts.tsv</a></li>
               <li><a href="deseq2_summary.txt">deseq2_summary.txt</a></li>
               <li><a href="ma_plot.png">ma_plot.png</a></li>
@@ -377,14 +477,48 @@ def _render_index_html(output_dir: Path, contrast_label: str, alpha: float) -> N
                   .replace('__CONTRAST__', html.escape(contrast_label))
                   .replace('__ALPHA__', str(alpha))
                   .replace('__PREVIEW_TABLE__', preview_html)
+                  .replace('__ANNOTATED_RESULTS_FILE__', additional_file_list)
                   .replace('__VOLCANO_SPEC__', volcano_spec_json))
     (output_dir / 'index.html').write_text(index_html, encoding='utf-8')
+
+
+def _write_visualization_output(
+    output_path: Path,
+    run_result: DESeq2RunResult,
+    alpha: float,
+    display_results: pd.DataFrame | None = None,
+    include_annotated_results_file: bool = False
+) -> None:
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    run_result.results.to_csv(output_path / 'deseq2_results.tsv', sep='\t', index=False)
+    if display_results is None:
+        display_results = run_result.results
+    elif include_annotated_results_file:
+        display_results.to_csv(output_path / 'deseq2_results_annotated.tsv', sep='\t', index=False)
+
+    run_result.normalized_counts.to_csv(output_path / 'normalized_counts.tsv', sep='\t', index=False)
+    (output_path / 'deseq2_summary.txt').write_text(run_result.summary, encoding='utf-8')
+    (output_path / 'ma_plot.png').write_bytes(run_result.ma_plot_png)
+    (output_path / 'volcano_plot.png').write_bytes(run_result.volcano_plot_png)
+    (output_path / 'deseq2_stdout.txt').write_text(run_result.stdout, encoding='utf-8')
+    (output_path / 'deseq2_stderr.txt').write_text(run_result.stderr, encoding='utf-8')
+
+    contrast_label = f'{run_result.test_level} vs {run_result.reference_level}'
+    _render_index_html(
+        output_path,
+        result_table=display_results,
+        contrast_label=contrast_label,
+        alpha=alpha,
+        include_annotated_results_file=include_annotated_results_file
+    )
 
 
 def differential_expression(
     output_dir: str,
     table: biom.Table,
-    condition: str,
+    condition,
+    annotations=None,
     test_level: str = '',
     reference_level: str = '',
     min_total_count: int = 10,
@@ -404,17 +538,17 @@ def differential_expression(
         cooks_cutoff=cooks_cutoff,
         independent_filtering=independent_filtering
     )
-
     output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
+    if annotations is None:
+        _write_visualization_output(output_path, run_result=run_result, alpha=alpha)
+        return
 
-    run_result.results.to_csv(output_path / 'deseq2_results.tsv', sep='\t', index=False)
-    run_result.normalized_counts.to_csv(output_path / 'normalized_counts.tsv', sep='\t', index=False)
-    (output_path / 'deseq2_summary.txt').write_text(run_result.summary, encoding='utf-8')
-    (output_path / 'ma_plot.png').write_bytes(run_result.ma_plot_png)
-    (output_path / 'volcano_plot.png').write_bytes(run_result.volcano_plot_png)
-    (output_path / 'deseq2_stdout.txt').write_text(run_result.stdout, encoding='utf-8')
-    (output_path / 'deseq2_stderr.txt').write_text(run_result.stderr, encoding='utf-8')
-
-    contrast_label = f'{run_result.test_level} vs {run_result.reference_level}'
-    _render_index_html(output_path, contrast_label=contrast_label, alpha=alpha)
+    annotation_table = _load_loci_annotation_table(annotations)
+    annotated_results = _merge_results_with_annotations(run_result.results, annotation_table)
+    _write_visualization_output(
+        output_path,
+        run_result=run_result,
+        alpha=alpha,
+        display_results=annotated_results,
+        include_annotated_results_file=True
+    )

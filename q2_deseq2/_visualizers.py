@@ -16,6 +16,7 @@ from urllib.parse import unquote
 
 import biom
 import pandas as pd
+from q2_types.genome_data import LociDirectoryFormat
 
 from q2_deseq2._deseq2 import DESeq2RunResult, run_deseq2
 
@@ -517,8 +518,8 @@ def _write_visualization_output(
 def differential_expression(
     output_dir: str,
     table: biom.Table,
-    condition,
-    annotations=None,
+    condition: str,
+    annotations: LociDirectoryFormat =None,
     test_level: str = '',
     reference_level: str = '',
     min_total_count: int = 10,

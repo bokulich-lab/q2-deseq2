@@ -16,7 +16,7 @@ import biom
 import pandas as pd
 
 from q2_deseq2._run_data import write_run_result_artifact
-from q2_deseq2.types._formats import DESeq2RunDirectoryFormat
+from q2_deseq2.types import DESeq2RunDirectoryFormat
 
 
 class DESeq2RunResult(NamedTuple):

@@ -15,7 +15,7 @@ import pandas as pd
 from q2_types.genome_data import LociDirectoryFormat
 
 from q2_deseq2.methods import DESeq2RunResult
-from q2_deseq2.types._formats import DESeq2RunDirectoryFormat
+from q2_deseq2.types import DESeq2RunDirectoryFormat
 from q2_deseq2._run_data import read_run_result_artifact
 
 
@@ -548,15 +548,16 @@ def _write_visualization_output(
 def _visualize(
     output_dir: str,
     deseq2_results: DESeq2RunDirectoryFormat,
-    annotations: LociDirectoryFormat = None,
+    gene_annotations: LociDirectoryFormat = None,
+    reference_id: str = None,
 ):
     run_result, alpha = read_run_result_artifact(deseq2_results)
     output_path = Path(output_dir)
-    if annotations is None:
+    if gene_annotations is None:
         _write_visualization_output(output_path, run_result=run_result, alpha=alpha)
         return
 
-    annotation_table = _load_loci_annotation_table(annotations)
+    annotation_table = _load_loci_annotation_table(gene_annotations)
     annotated_results = _merge_results_with_annotations(
         run_result.results, annotation_table
     )

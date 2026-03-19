@@ -6,16 +6,17 @@
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
 
-from __future__ import annotations
-
-from pathlib import Path
 import subprocess
 import tempfile
 import textwrap
+from pathlib import Path
 from typing import NamedTuple
 
 import biom
 import pandas as pd
+
+from q2_deseq2._run_data import write_run_result_artifact
+from q2_deseq2.types._formats import DESeq2RunDirectoryFormat
 
 
 class DESeq2RunResult(NamedTuple):
@@ -24,65 +25,74 @@ class DESeq2RunResult(NamedTuple):
     summary: str
     ma_plot_png: bytes
     volcano_plot_png: bytes
-    stdout: str
-    stderr: str
     test_level: str
     reference_level: str
 
 
-def _prepare_inputs(table: biom.Table, condition, min_total_count: int,
-                    test_level: str, reference_level: str) -> tuple[pd.DataFrame, pd.DataFrame, str, str]:
+def _prepare_inputs(
+    table: biom.Table,
+    condition,
+    min_total_count: int,
+    test_level: str,
+    reference_level: str,
+) -> tuple[pd.DataFrame, pd.DataFrame, str, str]:
     counts = table.to_dataframe(dense=True)
-    sample_ids = list(table.ids(axis='sample'))
+    sample_ids = list(table.ids(axis="sample"))
 
     metadata = condition.to_series().dropna().astype(str)
-    matched_samples = [sample_id for sample_id in sample_ids if sample_id in metadata.index]
+    matched_samples = [
+        sample_id for sample_id in sample_ids if sample_id in metadata.index
+    ]
     if len(matched_samples) < 2:
         raise ValueError(
-            'At least two samples must overlap between the feature table and condition metadata.'
+            "At least two samples must overlap between the feature table and condition metadata."
         )
 
     counts = counts.loc[:, matched_samples]
     metadata = metadata.loc[matched_samples]
 
     if metadata.nunique() < 2:
-        raise ValueError('Condition metadata must contain at least two unique levels.')
+        raise ValueError("Condition metadata must contain at least two unique levels.")
 
     counts = counts.round().astype(int)
     if (counts.values < 0).any():
-        raise ValueError('Feature table counts must be non-negative integers.')
+        raise ValueError("Feature table counts must be non-negative integers.")
 
     counts = counts.loc[counts.sum(axis=1) >= min_total_count]
     if counts.empty:
         raise ValueError(
-            'No genes remain after filtering. Lower min_total_count or provide a denser feature table.'
+            "No genes remain after filtering. Lower min_total_count or provide a denser feature table."
         )
 
     has_test = bool(test_level)
     has_reference = bool(reference_level)
     if has_test != has_reference:
-        raise ValueError('Provide both test_level and reference_level, or leave both unset.')
+        raise ValueError(
+            "Provide both test_level and reference_level, or leave both unset."
+        )
 
     levels = sorted(metadata.unique().tolist())
     if not has_test:
         if len(levels) != 2:
             raise ValueError(
-                'Condition metadata has more than two levels. '
-                'Set both test_level and reference_level to define a contrast.'
+                "Condition metadata has more than two levels. "
+                "Set both test_level and reference_level to define a contrast."
             )
         reference_level = levels[0]
         test_level = levels[1]
     else:
         if test_level not in levels:
-            raise ValueError(f'test_level "{test_level}" is not present in the condition metadata.')
+            raise ValueError(
+                f'test_level "{test_level}" is not present in the condition metadata.'
+            )
         if reference_level not in levels:
             raise ValueError(
                 f'reference_level "{reference_level}" is not present in the condition metadata.'
             )
         if test_level == reference_level:
-            raise ValueError('test_level and reference_level must be different values.')
+            raise ValueError("test_level and reference_level must be different values.")
 
-    coldata = pd.DataFrame({'condition': metadata})
+    coldata = pd.DataFrame({"condition": metadata})
     return counts, coldata, test_level, reference_level
 
 
@@ -242,62 +252,75 @@ def _write_r_script(script_fp: Path) -> None:
         dev.off()
         """
     ).strip()
-    script_fp.write_text(script + '\n', encoding='utf-8')
+    script_fp.write_text(script + "\n", encoding="utf-8")
 
 
 def run_deseq2(
     table: biom.Table,
     condition,
-    test_level: str = '',
-    reference_level: str = '',
+    test_level: str = "",
+    reference_level: str = "",
     min_total_count: int = 10,
-    fit_type: str = 'parametric',
+    fit_type: str = "parametric",
     alpha: float = 0.05,
     cooks_cutoff: bool = True,
-    independent_filtering: bool = True
+    independent_filtering: bool = True,
 ) -> DESeq2RunResult:
     if min_total_count < 0:
-        raise ValueError('min_total_count must be a non-negative integer.')
-    if fit_type not in {'parametric', 'local', 'mean'}:
-        raise ValueError('fit_type must be one of: parametric, local, mean.')
+        raise ValueError("min_total_count must be a non-negative integer.")
+    if fit_type not in {"parametric", "local", "mean"}:
+        raise ValueError("fit_type must be one of: parametric, local, mean.")
     if not 0 < alpha < 1:
-        raise ValueError('alpha must be between 0 and 1.')
+        raise ValueError("alpha must be between 0 and 1.")
 
     counts_df, coldata_df, test_level, reference_level = _prepare_inputs(
         table, condition, min_total_count, test_level, reference_level
     )
 
-    with tempfile.TemporaryDirectory(prefix='q2-deseq2-') as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="q2-deseq2-") as temp_dir:
         temp_path = Path(temp_dir)
-        counts_fp = temp_path / 'counts.tsv'
-        coldata_fp = temp_path / 'coldata.tsv'
-        results_fp = temp_path / 'deseq2_results.tsv'
-        normalized_counts_fp = temp_path / 'normalized_counts.tsv'
-        summary_fp = temp_path / 'deseq2_summary.txt'
-        ma_plot_fp = temp_path / 'ma_plot.png'
-        volcano_plot_fp = temp_path / 'volcano_plot.png'
-        script_fp = temp_path / 'run_deseq2.R'
+        counts_fp = temp_path / "counts.tsv"
+        coldata_fp = temp_path / "coldata.tsv"
+        results_fp = temp_path / "deseq2_results.tsv"
+        normalized_counts_fp = temp_path / "normalized_counts.tsv"
+        summary_fp = temp_path / "deseq2_summary.txt"
+        ma_plot_fp = temp_path / "ma_plot.png"
+        volcano_plot_fp = temp_path / "volcano_plot.png"
+        script_fp = temp_path / "run_deseq2.R"
 
-        counts_df.to_csv(counts_fp, sep='\t', index_label='feature_id')
-        coldata_df.to_csv(coldata_fp, sep='\t', index_label='sample_id')
+        counts_df.to_csv(counts_fp, sep="\t", index_label="feature_id")
+        coldata_df.to_csv(coldata_fp, sep="\t", index_label="sample_id")
         _write_r_script(script_fp)
 
         cmd = [
-            'Rscript',
+            "Rscript",
             str(script_fp),
-            '--counts', str(counts_fp),
-            '--coldata', str(coldata_fp),
-            '--results', str(results_fp),
-            '--normalized-counts', str(normalized_counts_fp),
-            '--summary', str(summary_fp),
-            '--ma-plot', str(ma_plot_fp),
-            '--volcano-plot', str(volcano_plot_fp),
-            '--fit-type', fit_type,
-            '--alpha', str(alpha),
-            '--cooks-cutoff', str(cooks_cutoff).lower(),
-            '--independent-filtering', str(independent_filtering).lower(),
-            '--test-level', test_level,
-            '--reference-level', reference_level
+            "--counts",
+            str(counts_fp),
+            "--coldata",
+            str(coldata_fp),
+            "--results",
+            str(results_fp),
+            "--normalized-counts",
+            str(normalized_counts_fp),
+            "--summary",
+            str(summary_fp),
+            "--ma-plot",
+            str(ma_plot_fp),
+            "--volcano-plot",
+            str(volcano_plot_fp),
+            "--fit-type",
+            fit_type,
+            "--alpha",
+            str(alpha),
+            "--cooks-cutoff",
+            str(cooks_cutoff).lower(),
+            "--independent-filtering",
+            str(independent_filtering).lower(),
+            "--test-level",
+            test_level,
+            "--reference-level",
+            reference_level,
         ]
 
         try:
@@ -305,15 +328,15 @@ def run_deseq2(
         except subprocess.CalledProcessError as exc:
             detail = exc.stderr.strip() or exc.stdout.strip()
             raise RuntimeError(
-                f'DESeq2 command failed with exit code {exc.returncode}: {detail}'
+                f"DESeq2 command failed with exit code {exc.returncode}: {detail}"
             ) from exc
 
         expected_outputs = {
-            'deseq2_results.tsv': results_fp,
-            'normalized_counts.tsv': normalized_counts_fp,
-            'deseq2_summary.txt': summary_fp,
-            'ma_plot.png': ma_plot_fp,
-            'volcano_plot.png': volcano_plot_fp
+            "deseq2_results.tsv": results_fp,
+            "normalized_counts.tsv": normalized_counts_fp,
+            "deseq2_summary.txt": summary_fp,
+            "ma_plot.png": ma_plot_fp,
+            "volcano_plot.png": volcano_plot_fp,
         }
         for expected_name, path in expected_outputs.items():
             if not path.exists():
@@ -321,9 +344,9 @@ def run_deseq2(
                     f'DESeq2 completed but expected output file "{expected_name}" was not created.'
                 )
 
-        results_df = pd.read_csv(results_fp, sep='\t')
-        normalized_counts_df = pd.read_csv(normalized_counts_fp, sep='\t')
-        summary = summary_fp.read_text(encoding='utf-8')
+        results_df = pd.read_csv(results_fp, sep="\t")
+        normalized_counts_df = pd.read_csv(normalized_counts_fp, sep="\t")
+        summary = summary_fp.read_text(encoding="utf-8")
         ma_plot_png = ma_plot_fp.read_bytes()
         volcano_plot_png = volcano_plot_fp.read_bytes()
 
@@ -333,8 +356,32 @@ def run_deseq2(
             summary=summary,
             ma_plot_png=ma_plot_png,
             volcano_plot_png=volcano_plot_png,
-            stdout=proc.stdout or '',
-            stderr=proc.stderr or '',
             test_level=test_level,
-            reference_level=reference_level
+            reference_level=reference_level,
         )
+
+
+def _estimate_differential_expression(
+    table: biom.Table,
+    condition: str,
+    test_level: str = "",
+    reference_level: str = "",
+    min_total_count: int = 10,
+    fit_type: str = "parametric",
+    alpha: float = 0.05,
+    cooks_cutoff: bool = True,
+    independent_filtering: bool = True,
+) -> (pd.DataFrame, DESeq2RunDirectoryFormat):
+    run_result = run_deseq2(
+        table=table,
+        condition=condition,
+        test_level=test_level,
+        reference_level=reference_level,
+        min_total_count=min_total_count,
+        fit_type=fit_type,
+        alpha=alpha,
+        cooks_cutoff=cooks_cutoff,
+        independent_filtering=independent_filtering,
+    )
+    run_data = write_run_result_artifact(run_result=run_result, alpha=alpha)
+    return run_result.results, run_data

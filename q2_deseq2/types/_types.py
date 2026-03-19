@@ -8,4 +8,5 @@
 from q2_types.feature_data import FeatureData
 from qiime2.plugin import SemanticType
 
-DESeq2Stats = SemanticType('DESeq2Stats', variant_of=FeatureData.field['type'])
+DESeq2Stats = SemanticType("DESeq2Stats", variant_of=FeatureData.field["type"])
+DESeq2Run = SemanticType("DESeq2Run")

@@ -8,11 +8,20 @@
 
 import json
 from pathlib import Path
+from typing import NamedTuple
 
 import pandas as pd
 
-from q2_deseq2._deseq2 import DESeq2RunResult
-from q2_deseq2._formats import DESeq2RunDirectoryFormat
+from q2_deseq2.types import DESeq2RunDirectoryFormat
+
+
+class DESeq2RunResult(NamedTuple):
+    results: pd.DataFrame
+    normalized_counts: pd.DataFrame
+    ma_plot_png: bytes
+    volcano_plot_png: bytes
+    test_level: str
+    reference_level: str
 
 
 def _write_run_result(path: Path, run_result: DESeq2RunResult, alpha: float) -> None:
@@ -22,7 +31,6 @@ def _write_run_result(path: Path, run_result: DESeq2RunResult, alpha: float) -> 
     run_result.normalized_counts.to_csv(
         path / "normalized_counts.tsv", sep="\t", index=False
     )
-    (path / "deseq2_summary.txt").write_text(run_result.summary, encoding="utf-8")
     (path / "ma_plot.png").write_bytes(run_result.ma_plot_png)
     (path / "volcano_plot.png").write_bytes(run_result.volcano_plot_png)
     (path / "metadata.json").write_text(
@@ -46,32 +54,20 @@ def write_run_result_artifact(
     return run_data
 
 
-def read_run_result_artifact(
+def _parse_run_results(
     run_data: DESeq2RunDirectoryFormat,
 ) -> tuple[DESeq2RunResult, float]:
     run_data_path = Path(str(run_data.path))
     metadata = json.loads((run_data_path / "metadata.json").read_text(encoding="utf-8"))
     alpha = float(metadata["alpha"])
-    stdout = metadata.get("stdout")
-    if stdout is None:
-        stdout_path = run_data_path / "deseq2_stdout.txt"
-        stdout = stdout_path.read_text(encoding="utf-8") if stdout_path.exists() else ""
-
-    stderr = metadata.get("stderr")
-    if stderr is None:
-        stderr_path = run_data_path / "deseq2_stderr.txt"
-        stderr = stderr_path.read_text(encoding="utf-8") if stderr_path.exists() else ""
 
     run_result = DESeq2RunResult(
         results=pd.read_csv(run_data_path / "deseq2_results.tsv", sep="\t"),
         normalized_counts=pd.read_csv(
             run_data_path / "normalized_counts.tsv", sep="\t"
         ),
-        summary=(run_data_path / "deseq2_summary.txt").read_text(encoding="utf-8"),
         ma_plot_png=(run_data_path / "ma_plot.png").read_bytes(),
         volcano_plot_png=(run_data_path / "volcano_plot.png").read_bytes(),
-        stdout=str(stdout),
-        stderr=str(stderr),
         test_level=str(metadata["test_level"]),
         reference_level=str(metadata["reference_level"]),
     )

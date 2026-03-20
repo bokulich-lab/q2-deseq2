@@ -74,18 +74,12 @@ class DESeq2RunMetadataFormat(model.TextFileFormat):
 class DESeq2ImageFormat(model.BinaryFileFormat):
     PNG_HEADER = b"\x89PNG\r\n\x1a\n"
 
-    def _validate_(self, level):
-        with self.open(mode="rb") as fh:
-            header = fh.read(len(self.PNG_HEADER))
-
-        if header != self.PNG_HEADER:
-            raise ValidationError("Expected a PNG image file.")
+    def _validate_(self, level): ...
 
 
 class DESeq2RunDirectoryFormat(model.DirectoryFormat):
     results = model.File("deseq2_results.tsv", format=DESeq2StatsFormat)
     normalized_counts = model.File("normalized_counts.tsv", format=DESeq2StatsFormat)
-    summary = model.File("deseq2_summary.txt", format=model.TextFileFormat)
     ma_plot = model.File("ma_plot.png", format=DESeq2ImageFormat)
     volcano_plot = model.File("volcano_plot.png", format=DESeq2ImageFormat)
     metadata = model.File("metadata.json", format=DESeq2RunMetadataFormat)

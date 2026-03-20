@@ -6,27 +6,16 @@
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
 
-import subprocess
+from subprocess import run, CalledProcessError
 import tempfile
 import textwrap
 from pathlib import Path
-from typing import NamedTuple
 
 import biom
 import pandas as pd
 
-from q2_deseq2._run_data import write_run_result_artifact
+from q2_deseq2._run_data import write_run_result_artifact, DESeq2RunResult
 from q2_deseq2.types import DESeq2RunDirectoryFormat
-
-
-class DESeq2RunResult(NamedTuple):
-    results: pd.DataFrame
-    normalized_counts: pd.DataFrame
-    summary: str
-    ma_plot_png: bytes
-    volcano_plot_png: bytes
-    test_level: str
-    reference_level: str
 
 
 def _prepare_inputs(
@@ -266,13 +255,6 @@ def run_deseq2(
     cooks_cutoff: bool = True,
     independent_filtering: bool = True,
 ) -> DESeq2RunResult:
-    if min_total_count < 0:
-        raise ValueError("min_total_count must be a non-negative integer.")
-    if fit_type not in {"parametric", "local", "mean"}:
-        raise ValueError("fit_type must be one of: parametric, local, mean.")
-    if not 0 < alpha < 1:
-        raise ValueError("alpha must be between 0 and 1.")
-
     counts_df, coldata_df, test_level, reference_level = _prepare_inputs(
         table, condition, min_total_count, test_level, reference_level
     )
@@ -324,8 +306,8 @@ def run_deseq2(
         ]
 
         try:
-            proc = subprocess.run(cmd, check=True, capture_output=True, text=True)
-        except subprocess.CalledProcessError as exc:
+            run(cmd, check=True, capture_output=True, text=True)
+        except CalledProcessError as exc:
             detail = exc.stderr.strip() or exc.stdout.strip()
             raise RuntimeError(
                 f"DESeq2 command failed with exit code {exc.returncode}: {detail}"
@@ -334,7 +316,6 @@ def run_deseq2(
         expected_outputs = {
             "deseq2_results.tsv": results_fp,
             "normalized_counts.tsv": normalized_counts_fp,
-            "deseq2_summary.txt": summary_fp,
             "ma_plot.png": ma_plot_fp,
             "volcano_plot.png": volcano_plot_fp,
         }
@@ -346,14 +327,12 @@ def run_deseq2(
 
         results_df = pd.read_csv(results_fp, sep="\t")
         normalized_counts_df = pd.read_csv(normalized_counts_fp, sep="\t")
-        summary = summary_fp.read_text(encoding="utf-8")
         ma_plot_png = ma_plot_fp.read_bytes()
         volcano_plot_png = volcano_plot_fp.read_bytes()
 
         return DESeq2RunResult(
             results=results_df,
             normalized_counts=normalized_counts_df,
-            summary=summary,
             ma_plot_png=ma_plot_png,
             volcano_plot_png=volcano_plot_png,
             test_level=test_level,

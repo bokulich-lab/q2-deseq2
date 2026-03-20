@@ -21,6 +21,7 @@ from qiime2.plugin import (
 from q2_types.feature_data import FeatureData
 from q2_types.feature_table import FeatureTable, Frequency
 from q2_types.genome_data import GenomeData, Loci
+from rachis.core.type import Range
 
 from q2_deseq2 import __version__
 from q2_deseq2.types import (
@@ -75,9 +76,9 @@ plugin.methods.register_function(
         "condition": MetadataColumn[Categorical],
         "test_level": Str,
         "reference_level": Str,
-        "min_total_count": Int,
+        "min_total_count": Int % Range(0, None),
         "fit_type": Str % Choices("parametric", "local", "mean"),
-        "alpha": Float,
+        "alpha": Float % Range(0.0, 1.0),
         "cooks_cutoff": Bool,
         "independent_filtering": Bool,
     },
@@ -207,4 +208,4 @@ plugin.pipelines.register_function(
 )
 
 # Import transformers at module import-time so registration decorators execute.
-import q2_deseq2._transformers  # noqa: E402,F401
+import q2_deseq2.types._transformers  # noqa: E402,F401

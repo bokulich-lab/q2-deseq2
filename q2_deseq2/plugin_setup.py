@@ -74,7 +74,6 @@ plugin.methods.register_function(
     inputs={"table": FeatureTable[Frequency]},
     parameters={
         "condition": MetadataColumn[Categorical],
-        "test_level": Str,
         "reference_level": Str,
         "min_total_count": Int % Range(0, None),
         "fit_type": Str % Choices("parametric", "local", "mean"),
@@ -89,13 +88,10 @@ plugin.methods.register_function(
             "Categorical sample metadata column defining experimental condition. "
             "At least two levels are required."
         ),
-        "test_level": (
-            "Condition level to test as numerator in the contrast. "
-            "If omitted, inferred for two-level designs."
-        ),
         "reference_level": (
-            "Condition level to use as denominator in the contrast. "
-            "If omitted, inferred for two-level designs."
+            "Condition level to use as the reference baseline for all pairwise contrasts. "
+            "If omitted, inferred for two-level designs and required when more than two "
+            "levels are present."
         ),
         "min_total_count": "Filter out genes with total count below this threshold before DESeq2.",
         "fit_type": "DESeq2 dispersion fit type.",
@@ -105,7 +101,8 @@ plugin.methods.register_function(
     },
     output_descriptions={
         "deseq2_stats": (
-            "Tabular DESeq2 statistics per gene including effect size and significance metrics."
+            "Tabular DESeq2 statistics per gene and comparison including effect size and "
+            "significance metrics."
         ),
         "deseq2_results": (
             "Internal DESeq2 run outputs including normalized counts and summaries."
@@ -154,7 +151,6 @@ plugin.pipelines.register_function(
     parameters={
         "reference_id": Str,
         "condition": MetadataColumn[Categorical],
-        "test_level": Str,
         "reference_level": Str,
         "min_total_count": Int,
         "fit_type": Str % Choices("parametric", "local", "mean"),
@@ -179,13 +175,10 @@ plugin.pipelines.register_function(
             "Categorical sample metadata column defining experimental condition. "
             "At least two levels are required."
         ),
-        "test_level": (
-            "Condition level to test as numerator in the contrast. "
-            "If omitted, inferred for two-level designs."
-        ),
         "reference_level": (
-            "Condition level to use as denominator in the contrast. "
-            "If omitted, inferred for two-level designs."
+            "Condition level to use as the reference baseline for all pairwise contrasts. "
+            "If omitted, inferred for two-level designs and required when more than two "
+            "levels are present."
         ),
         "min_total_count": "Filter out genes with total count below this threshold before DESeq2.",
         "fit_type": "DESeq2 dispersion fit type.",
@@ -195,7 +188,8 @@ plugin.pipelines.register_function(
     },
     output_descriptions={
         "expression_stats": (
-            "Tabular DESeq2 statistics per gene including effect size and significance metrics."
+            "Tabular DESeq2 statistics per gene and comparison including effect size and "
+            "significance metrics."
         ),
         "visualization": ("Differential expression results visualization."),
     },

@@ -162,6 +162,74 @@ def _load_vega_spec(spec_name: str) -> dict:
     return json.loads(spec_path.read_text(encoding="utf-8"))
 
 
+def _format_comparison_label(test_level: str, reference_level: str) -> str:
+    return f"{test_level} vs. {reference_level}"
+
+
+def _ensure_comparison_columns(
+    result_table: pd.DataFrame,
+    default_test_level: str,
+    reference_level: str,
+) -> pd.DataFrame:
+    enriched = result_table.copy()
+    if "test_level" not in enriched.columns:
+        enriched["test_level"] = default_test_level
+    else:
+        enriched["test_level"] = enriched["test_level"].fillna(default_test_level)
+
+    if "reference_level" not in enriched.columns:
+        enriched["reference_level"] = reference_level
+    else:
+        enriched["reference_level"] = enriched["reference_level"].fillna(
+            reference_level
+        )
+
+    if "comparison" not in enriched.columns:
+        enriched["comparison"] = ""
+    comparison_missing = enriched["comparison"].isna() | (
+        enriched["comparison"].astype(str).str.strip() == ""
+    )
+    if comparison_missing.any():
+        enriched.loc[comparison_missing, "comparison"] = enriched.loc[
+            comparison_missing
+        ].apply(
+            lambda row: _format_comparison_label(
+                str(row["test_level"]), str(row["reference_level"])
+            ),
+            axis=1,
+        )
+
+    return enriched
+
+
+def _collect_comparison_options(
+    result_table: pd.DataFrame, default_comparison: str
+) -> tuple[list[dict[str, str]], str]:
+    comparison_frame = (
+        result_table.loc[:, ["comparison", "test_level", "reference_level"]]
+        .drop_duplicates()
+        .reset_index(drop=True)
+    )
+    comparison_options = comparison_frame.to_dict(orient="records")
+    if not comparison_options:
+        comparison_options = [
+            {
+                "comparison": default_comparison,
+                "test_level": "",
+                "reference_level": "",
+            }
+        ]
+
+    known_comparisons = {option["comparison"] for option in comparison_options}
+    if default_comparison not in known_comparisons:
+        default_comparison = comparison_options[0]["comparison"]
+
+    comparison_options.sort(
+        key=lambda option: option["comparison"] != default_comparison
+    )
+    return comparison_options, default_comparison
+
+
 def _summarize_results(
     result_table: pd.DataFrame, alpha: float
 ) -> dict[str, int | str]:
@@ -204,7 +272,8 @@ def _copy_report_assets(output_dir: Path) -> None:
 def _render_report(
     output_dir: Path,
     result_table: pd.DataFrame,
-    contrast_label: str,
+    default_test_level: str,
+    reference_level: str,
     alpha: float,
     include_annotated_results_file: bool,
 ) -> None:
@@ -214,23 +283,30 @@ def _render_report(
     _copy_report_assets(output_dir)
     data_dir = output_dir / "data"
     data_dir.mkdir(exist_ok=True)
-    (data_dir / "volcano_data.json").write_text(
-        json.dumps(_build_plot_records(result_table)).replace("NaN", "null"),
-        encoding="utf-8",
-    )
-    (data_dir / "ma_data.json").write_text(
-        json.dumps(_build_plot_records(result_table)).replace("NaN", "null"),
-        encoding="utf-8",
+    report_results = _ensure_comparison_columns(
+        result_table,
+        default_test_level=default_test_level,
+        reference_level=reference_level,
     )
     (data_dir / "results_table.json").write_text(
-        _prepare_table_payload(result_table), encoding="utf-8"
+        _prepare_table_payload(report_results), encoding="utf-8"
     )
 
     volcano_spec = _load_vega_spec("volcano")
     volcano_spec["signals"][0]["value"] = alpha
     ma_spec = _load_vega_spec("ma")
     ma_spec["signals"][0]["value"] = alpha
-    summary = _summarize_results(result_table, alpha)
+    default_comparison = _format_comparison_label(default_test_level, reference_level)
+    comparison_options, default_comparison = _collect_comparison_options(
+        report_results, default_comparison
+    )
+    default_results = report_results.loc[
+        report_results["comparison"] == default_comparison
+    ].reset_index(drop=True)
+    if default_results.empty:
+        default_results = report_results.reset_index(drop=True)
+
+    summary = _summarize_results(default_results, alpha)
 
     templates = [
         str(_ASSETS_DIR / "index.html"),
@@ -241,14 +317,14 @@ def _render_report(
             {"title": "Overview", "url": "index.html"},
             {"title": "Results table", "url": "table.html"},
         ],
-        "contrast_label": contrast_label,
         "alpha": str(alpha),
         "summary": summary,
         "vega_volcano_spec": json.dumps(volcano_spec),
         "vega_ma_spec": json.dumps(ma_spec),
-        "volcano_data_path": "data/volcano_data.json",
-        "ma_data_path": "data/ma_data.json",
-        "table_data_path": "data/results_table.json",
+        "results_data_path_json": json.dumps("data/results_table.json"),
+        "comparison_options_json": json.dumps(comparison_options),
+        "default_comparison_json": json.dumps(default_comparison),
+        "default_comparison": default_comparison,
         "include_annotated_results_file": include_annotated_results_file,
     }
     q2templates.render(templates, str(output_dir), context=context)
@@ -275,11 +351,11 @@ def _write_visualization_output(
     (output_path / "ma_plot.png").write_bytes(run_result.ma_plot_png)
     (output_path / "volcano_plot.png").write_bytes(run_result.volcano_plot_png)
 
-    contrast_label = f"{run_result.test_level} vs. {run_result.reference_level}"
     _render_report(
         output_path,
         result_table=display_results,
-        contrast_label=contrast_label,
+        default_test_level=run_result.test_level,
+        reference_level=run_result.reference_level,
         alpha=alpha,
         include_annotated_results_file=include_annotated_results,
     )

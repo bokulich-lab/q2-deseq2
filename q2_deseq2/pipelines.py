@@ -13,7 +13,6 @@ def estimate(
     condition,
     gene_annotations=None,
     reference_id=None,
-    test_level="",
     reference_level="",
     min_total_count=10,
     fit_type="parametric",
@@ -27,7 +26,6 @@ def estimate(
     shared_kwargs = {
         "table": table,
         "condition": condition,
-        "test_level": test_level,
         "reference_level": reference_level,
         "min_total_count": min_total_count,
         "fit_type": fit_type,

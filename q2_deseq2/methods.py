@@ -22,9 +22,8 @@ def _prepare_inputs(
     table: biom.Table,
     condition,
     min_total_count: int,
-    test_level: str,
     reference_level: str,
-) -> tuple[pd.DataFrame, pd.DataFrame, str, str]:
+) -> tuple[pd.DataFrame, pd.DataFrame, list[str], str]:
     counts = table.to_dataframe(dense=True)
     sample_ids = list(table.ids(axis="sample"))
 
@@ -53,36 +52,28 @@ def _prepare_inputs(
             "No genes remain after filtering. Lower min_total_count or provide a denser feature table."
         )
 
-    has_test = bool(test_level)
-    has_reference = bool(reference_level)
-    if has_test != has_reference:
-        raise ValueError(
-            "Provide both test_level and reference_level, or leave both unset."
-        )
-
     levels = sorted(metadata.unique().tolist())
-    if not has_test:
+    if not reference_level:
         if len(levels) != 2:
             raise ValueError(
                 "Condition metadata has more than two levels. "
-                "Set both test_level and reference_level to define a contrast."
+                "Set reference_level to define the baseline for all pairwise contrasts."
             )
         reference_level = levels[0]
-        test_level = levels[1]
     else:
-        if test_level not in levels:
-            raise ValueError(
-                f'test_level "{test_level}" is not present in the condition metadata.'
-            )
         if reference_level not in levels:
             raise ValueError(
                 f'reference_level "{reference_level}" is not present in the condition metadata.'
             )
-        if test_level == reference_level:
-            raise ValueError("test_level and reference_level must be different values.")
+
+    comparison_levels = [level for level in levels if level != reference_level]
+    if not comparison_levels:
+        raise ValueError(
+            "Condition metadata must contain at least one non-reference level."
+        )
 
     coldata = pd.DataFrame({"condition": metadata})
-    return counts, coldata, test_level, reference_level
+    return counts, coldata, comparison_levels, reference_level
 
 
 def _write_r_script(script_fp: Path) -> None:
@@ -114,7 +105,6 @@ def _write_r_script(script_fp: Path) -> None:
         alpha <- as.numeric(get_arg("--alpha"))
         cooks_cutoff <- parse_bool(get_arg("--cooks-cutoff"))
         independent_filtering <- parse_bool(get_arg("--independent-filtering"))
-        test_level <- get_arg("--test-level")
         reference_level <- get_arg("--reference-level")
 
         suppressPackageStartupMessages(library("DESeq2"))
@@ -140,7 +130,18 @@ def _write_r_script(script_fp: Path) -> None:
 
         counts <- round(as.matrix(counts))
         storage.mode(counts) <- "integer"
-        coldata$condition <- factor(coldata$condition)
+        all_levels <- sort(unique(as.character(coldata$condition)))
+        if (!(reference_level %in% all_levels)) {
+          stop(sprintf('reference_level "%s" is not present in the condition metadata.', reference_level))
+        }
+        test_levels <- setdiff(all_levels, reference_level)
+        if (length(test_levels) == 0) {
+          stop("No comparison levels remain after selecting the reference level.")
+        }
+        coldata$condition <- factor(
+          as.character(coldata$condition),
+          levels = c(reference_level, test_levels)
+        )
 
         if (!identical(colnames(counts), rownames(coldata))) {
           stop("Sample order mismatch between count matrix and metadata.")
@@ -153,8 +154,13 @@ def _write_r_script(script_fp: Path) -> None:
         )
         dds <- dds[rowSums(counts(dds)) > 0, ]
         dds <- DESeq(dds, fitType = fit_type)
+        comparison_results <- list()
+        summary_lines <- character()
+        default_res <- NULL
+        default_res_df <- NULL
+        default_test_level <- test_levels[[1]]
 
-        if (test_level != "" && reference_level != "") {
+        for (test_level in test_levels) {
           res <- results(
             dds,
             contrast = c("condition", test_level, reference_level),
@@ -162,22 +168,47 @@ def _write_r_script(script_fp: Path) -> None:
             cooksCutoff = cooks_cutoff,
             independentFiltering = independent_filtering
           )
-        } else {
-          res <- results(
-            dds,
-            alpha = alpha,
-            cooksCutoff = cooks_cutoff,
-            independentFiltering = independent_filtering
+
+          res_df <- as.data.frame(res)
+          res_df$comparison <- sprintf("%s vs. %s", test_level, reference_level)
+          res_df$test_level <- test_level
+          res_df$reference_level <- reference_level
+          res_df$feature_id <- rownames(res_df)
+          res_df <- res_df[
+            ,
+            c(
+              "comparison",
+              "test_level",
+              "reference_level",
+              "feature_id",
+              setdiff(
+                colnames(res_df),
+                c("comparison", "test_level", "reference_level", "feature_id")
+              )
+            )
+          ]
+
+          if ("padj" %in% colnames(res_df) && "pvalue" %in% colnames(res_df)) {
+            res_df <- res_df[
+              order(is.na(res_df$padj), res_df$padj, is.na(res_df$pvalue), res_df$pvalue),
+            ]
+          }
+
+          comparison_results[[test_level]] <- res_df
+          summary_lines <- c(
+            summary_lines,
+            sprintf("Comparison: %s vs. %s", test_level, reference_level),
+            capture.output(summary(res)),
+            ""
           )
+
+          if (is.null(default_res)) {
+            default_res <- res
+            default_res_df <- res_df
+          }
         }
 
-        res_df <- as.data.frame(res)
-        res_df$feature_id <- rownames(res_df)
-        res_df <- res_df[, c("feature_id", setdiff(colnames(res_df), "feature_id"))]
-
-        if ("padj" %in% colnames(res_df) && "pvalue" %in% colnames(res_df)) {
-          res_df <- res_df[order(is.na(res_df$padj), res_df$padj, is.na(res_df$pvalue), res_df$pvalue), ]
-        }
+        res_df <- do.call(rbind, comparison_results)
 
         write.table(
           res_df,
@@ -198,24 +229,23 @@ def _write_r_script(script_fp: Path) -> None:
           row.names = FALSE
         )
 
-        writeLines(capture.output(summary(res)), con = summary_path)
-
-        plot_label <- if (test_level != "" && reference_level != "") {
-          sprintf("%s vs %s", test_level, reference_level)
-        } else {
-          "default contrast"
+        if (length(summary_lines) == 0) {
+          summary_lines <- "No comparisons were generated."
         }
+        writeLines(summary_lines, con = summary_path)
+
+        plot_label <- sprintf("%s vs. %s", default_test_level, reference_level)
         png(filename = ma_plot_path, width = 1200, height = 900)
-        plotMA(res, alpha = alpha, main = paste("DESeq2 MA plot:", plot_label))
+        plotMA(default_res, alpha = alpha, main = paste("DESeq2 MA plot:", plot_label))
         dev.off()
 
-        y_values <- -log10(res_df$padj)
-        finite_idx <- is.finite(res_df$log2FoldChange) & is.finite(y_values)
+        y_values <- -log10(default_res_df$padj)
+        finite_idx <- is.finite(default_res_df$log2FoldChange) & is.finite(y_values)
 
         png(filename = volcano_plot_path, width = 1200, height = 900)
         if (any(finite_idx)) {
           plot(
-            res_df$log2FoldChange[finite_idx],
+            default_res_df$log2FoldChange[finite_idx],
             y_values[finite_idx],
             pch = 20,
             col = rgb(0.2, 0.4, 0.7, 0.65),
@@ -241,7 +271,6 @@ def _write_r_script(script_fp: Path) -> None:
 def run_deseq2(
     table: biom.Table,
     condition,
-    test_level: str = "",
     reference_level: str = "",
     min_total_count: int = 10,
     fit_type: str = "parametric",
@@ -249,9 +278,12 @@ def run_deseq2(
     cooks_cutoff: bool = True,
     independent_filtering: bool = True,
 ) -> DESeq2RunResult:
-    counts_df, coldata_df, test_level, reference_level = _prepare_inputs(
-        table, condition, min_total_count, test_level, reference_level
+    counts_df, coldata_df, comparison_levels, reference_level = _prepare_inputs(
+        table, condition, min_total_count, reference_level
     )
+    default_test_level = comparison_levels[0]
+
+    counts_df = counts_df + 1
 
     with tempfile.TemporaryDirectory(prefix="q2-deseq2-") as temp_dir:
         temp_path = Path(temp_dir)
@@ -293,8 +325,6 @@ def run_deseq2(
             str(cooks_cutoff).lower(),
             "--independent-filtering",
             str(independent_filtering).lower(),
-            "--test-level",
-            test_level,
             "--reference-level",
             reference_level,
         ]
@@ -329,7 +359,7 @@ def run_deseq2(
             normalized_counts=normalized_counts_df,
             ma_plot_png=ma_plot_png,
             volcano_plot_png=volcano_plot_png,
-            test_level=test_level,
+            test_level=default_test_level,
             reference_level=reference_level,
         )
 
@@ -337,7 +367,6 @@ def run_deseq2(
 def _estimate_differential_expression(
     table: biom.Table,
     condition: str,
-    test_level: str = "",
     reference_level: str = "",
     min_total_count: int = 10,
     fit_type: str = "parametric",
@@ -348,7 +377,6 @@ def _estimate_differential_expression(
     run_result = run_deseq2(
         table=table,
         condition=condition,
-        test_level=test_level,
         reference_level=reference_level,
         min_total_count=min_total_count,
         fit_type=fit_type,

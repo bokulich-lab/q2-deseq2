@@ -35,6 +35,9 @@ class TestMethods(TestPluginBase):
             results=pd.DataFrame(
                 [
                     {
+                        "comparison": "other vs. control",
+                        "test_level": "other",
+                        "reference_level": "control",
                         "feature_id": "GG_OTU_2",
                         "baseMean": 120.0,
                         "log2FoldChange": 2.4,
@@ -42,7 +45,19 @@ class TestMethods(TestPluginBase):
                         "stat": 6.0,
                         "pvalue": 0.002,
                         "padj": 0.01,
-                    }
+                    },
+                    {
+                        "comparison": "treated vs. control",
+                        "test_level": "treated",
+                        "reference_level": "control",
+                        "feature_id": "GG_OTU_2",
+                        "baseMean": 140.0,
+                        "log2FoldChange": 1.2,
+                        "lfcSE": 0.3,
+                        "stat": 4.0,
+                        "pvalue": 0.01,
+                        "padj": 0.04,
+                    },
                 ]
             ),
             normalized_counts=pd.DataFrame(
@@ -50,17 +65,16 @@ class TestMethods(TestPluginBase):
             ),
             ma_plot_png=b"ma-bytes",
             volcano_plot_png=b"volcano-bytes",
-            test_level="treated",
+            test_level="other",
             reference_level="control",
         )
 
-    def test_prepare_inputs_infers_two_level_contrast_and_filters_features(self):
-        observed_counts, observed_coldata, observed_test, observed_reference = (
+    def test_prepare_inputs_infers_reference_for_two_level_metadata(self):
+        observed_counts, observed_coldata, observed_comparisons, observed_reference = (
             methods._prepare_inputs(
                 self.table,
                 self.condition,
                 min_total_count=3,
-                test_level="",
                 reference_level="",
             )
         )
@@ -73,19 +87,18 @@ class TestMethods(TestPluginBase):
 
         assert_frame_equal(observed_counts, expected_counts)
         assert_frame_equal(observed_coldata, expected_coldata)
-        self.assertEqual(observed_test, "treated")
+        self.assertEqual(observed_comparisons, ["treated"])
         self.assertEqual(observed_reference, "control")
         self.assertTrue(
             all(dtype.kind in {"i", "u"} for dtype in observed_counts.dtypes)
         )
 
-    def test_prepare_inputs_accepts_explicit_contrast_for_three_level_metadata(self):
-        observed_counts, observed_coldata, observed_test, observed_reference = (
+    def test_prepare_inputs_accepts_reference_level_for_three_level_metadata(self):
+        observed_counts, observed_coldata, observed_comparisons, observed_reference = (
             methods._prepare_inputs(
                 self.table,
                 self.condition_three_levels,
                 min_total_count=0,
-                test_level="treated",
                 reference_level="other",
             )
         )
@@ -97,7 +110,7 @@ class TestMethods(TestPluginBase):
 
         assert_frame_equal(observed_counts, expected_counts)
         assert_frame_equal(observed_coldata, expected_coldata)
-        self.assertEqual(observed_test, "treated")
+        self.assertEqual(observed_comparisons, ["control", "treated"])
         self.assertEqual(observed_reference, "other")
 
     def test_prepare_inputs_requires_two_overlapping_samples(self):
@@ -106,7 +119,6 @@ class TestMethods(TestPluginBase):
                 self.table,
                 self.condition_unmatched,
                 min_total_count=0,
-                test_level="",
                 reference_level="",
             )
 
@@ -118,7 +130,6 @@ class TestMethods(TestPluginBase):
                 self.table,
                 self.condition_single_level,
                 min_total_count=0,
-                test_level="",
                 reference_level="",
             )
 
@@ -138,7 +149,6 @@ class TestMethods(TestPluginBase):
                 negative_table,
                 self.condition,
                 min_total_count=0,
-                test_level="",
                 reference_level="",
             )
 
@@ -148,54 +158,29 @@ class TestMethods(TestPluginBase):
                 self.table,
                 self.condition,
                 min_total_count=1000,
-                test_level="",
                 reference_level="",
             )
 
-    def test_prepare_inputs_requires_both_levels_or_neither(self):
+    def test_prepare_inputs_requires_reference_for_more_than_two_levels(self):
         with self.assertRaisesRegex(
-            ValueError, "Provide both test_level and reference_level"
-        ):
-            methods._prepare_inputs(
-                self.table,
-                self.condition,
-                min_total_count=0,
-                test_level="treated",
-                reference_level="",
-            )
-
-    def test_prepare_inputs_requires_explicit_contrast_for_more_than_two_levels(self):
-        with self.assertRaisesRegex(
-            ValueError, "Condition metadata has more than two levels"
+            ValueError, "Set reference_level to define the baseline"
         ):
             methods._prepare_inputs(
                 self.table,
                 self.condition_three_levels,
                 min_total_count=0,
-                test_level="",
                 reference_level="",
             )
 
-    def test_prepare_inputs_rejects_missing_requested_level(self):
-        with self.assertRaisesRegex(ValueError, 'test_level "missing" is not present'):
-            methods._prepare_inputs(
-                self.table,
-                self.condition,
-                min_total_count=0,
-                test_level="missing",
-                reference_level="control",
-            )
-
-    def test_prepare_inputs_rejects_duplicate_contrast_levels(self):
+    def test_prepare_inputs_rejects_missing_reference_level(self):
         with self.assertRaisesRegex(
-            ValueError, "test_level and reference_level must be different"
+            ValueError, 'reference_level "missing" is not present'
         ):
             methods._prepare_inputs(
                 self.table,
                 self.condition,
                 min_total_count=0,
-                test_level="treated",
-                reference_level="treated",
+                reference_level="missing",
             )
 
     def test_write_r_script_contains_expected_steps(self):
@@ -207,9 +192,11 @@ class TestMethods(TestPluginBase):
             script = script_fp.read_text(encoding="utf-8")
 
         self.assertIn("DESeqDataSetFromMatrix", script)
-        self.assertIn("--normalized-counts", script)
-        self.assertIn("plotMA(res, alpha = alpha", script)
+        self.assertIn("test_levels <- setdiff(all_levels, reference_level)", script)
+        self.assertIn("comparison_results <- list()", script)
+        self.assertIn("plotMA(default_res, alpha = alpha", script)
         self.assertIn('ylab = "-log10 adjusted p-value"', script)
+        self.assertNotIn("--test-level", script)
         self.assertTrue(script.endswith("\n"))
 
     @patch("q2_deseq2.methods.run")
@@ -235,7 +222,7 @@ class TestMethods(TestPluginBase):
 
             self.assertTrue(counts_fp.exists())
             self.assertTrue(coldata_fp.exists())
-            self.assertIn("--test-level", cmd)
+            self.assertNotIn("--test-level", cmd)
             self.assertIn("--reference-level", cmd)
 
             expected_results.to_csv(results_fp, sep="\t", index=False)
@@ -251,8 +238,7 @@ class TestMethods(TestPluginBase):
 
         observed = methods.run_deseq2(
             table=self.table,
-            condition=self.condition,
-            test_level="treated",
+            condition=self.condition_three_levels,
             reference_level="control",
             min_total_count=3,
             fit_type="mean",
@@ -272,7 +258,7 @@ class TestMethods(TestPluginBase):
         assert_frame_equal(observed.normalized_counts, expected_normalized_counts)
         self.assertEqual(observed.ma_plot_png, expected_ma_plot)
         self.assertEqual(observed.volcano_plot_png, expected_volcano_plot)
-        self.assertEqual(observed.test_level, "treated")
+        self.assertEqual(observed.test_level, "other")
         self.assertEqual(observed.reference_level, "control")
 
     @patch("q2_deseq2.methods.run")
@@ -287,7 +273,6 @@ class TestMethods(TestPluginBase):
             methods.run_deseq2(
                 table=self.table,
                 condition=self.condition,
-                test_level="treated",
                 reference_level="control",
             )
 
@@ -314,7 +299,6 @@ class TestMethods(TestPluginBase):
             methods.run_deseq2(
                 table=self.table,
                 condition=self.condition,
-                test_level="treated",
                 reference_level="control",
             )
 
@@ -329,7 +313,6 @@ class TestMethods(TestPluginBase):
         observed_results, observed_run_data = methods._estimate_differential_expression(
             table=self.table,
             condition=self.condition,
-            test_level="treated",
             reference_level="control",
             min_total_count=11,
             fit_type="local",
@@ -341,7 +324,6 @@ class TestMethods(TestPluginBase):
         run_deseq2_mock.assert_called_once_with(
             table=self.table,
             condition=self.condition,
-            test_level="treated",
             reference_level="control",
             min_total_count=11,
             fit_type="local",

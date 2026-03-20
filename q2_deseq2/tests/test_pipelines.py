@@ -20,7 +20,6 @@ class TestPipelines(TestPluginBase):
             condition="condition-column",
             gene_annotations=None,
             reference_id=None,
-            test_level="treated",
             reference_level="control",
             min_total_count=11,
             fit_type="local",
@@ -38,7 +37,6 @@ class TestPipelines(TestPluginBase):
         table_action.assert_called_once_with(
             table="table-artifact",
             condition="condition-column",
-            test_level="treated",
             reference_level="control",
             min_total_count=11,
             fit_type="local",
@@ -67,7 +65,6 @@ class TestPipelines(TestPluginBase):
         table_action.assert_called_once_with(
             table="table-artifact",
             condition="condition-column",
-            test_level="",
             reference_level="",
             min_total_count=10,
             fit_type="parametric",

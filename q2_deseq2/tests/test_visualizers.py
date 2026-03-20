@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pandas as pd
 from pandas.testing import assert_frame_equal
@@ -60,6 +60,36 @@ class TestVisualizers(TestPluginBase):
             gene_name=["dnaA", "gene-b", None],
             product=["Replication initiator", "Some product", "Third product"],
         )
+        self.multi_results = pd.concat(
+            [
+                self.raw_results.assign(
+                    comparison="other vs. control",
+                    test_level="other",
+                    reference_level="control",
+                ),
+                self.raw_results.assign(
+                    comparison="treated vs. control",
+                    test_level="treated",
+                    reference_level="control",
+                ),
+            ],
+            ignore_index=True,
+        )
+        self.annotated_multi_results = pd.concat(
+            [
+                self.annotated_results.assign(
+                    comparison="other vs. control",
+                    test_level="other",
+                    reference_level="control",
+                ),
+                self.annotated_results.assign(
+                    comparison="treated vs. control",
+                    test_level="treated",
+                    reference_level="control",
+                ),
+            ],
+            ignore_index=True,
+        )
         self.normalized_counts = pd.DataFrame(
             [
                 {"feature_id": "GG_OTU_1", "Sample1": 100.0, "Sample2": 140.0},
@@ -67,11 +97,11 @@ class TestVisualizers(TestPluginBase):
             ]
         )
         self.run_result = DESeq2RunResult(
-            results=self.raw_results,
+            results=self.multi_results,
             normalized_counts=self.normalized_counts,
             ma_plot_png=b"ma-plot",
             volcano_plot_png=b"volcano-plot",
-            test_level="treated",
+            test_level="other",
             reference_level="control",
         )
 
@@ -162,6 +192,21 @@ class TestVisualizers(TestPluginBase):
         self.assertIsNone(observed[2]["log2FoldChange"])
         self.assertIsNone(observed[2]["gene_name"])
 
+    def test_ensure_comparison_columns_backfills_single_comparison_results(self):
+        observed = visualizers._ensure_comparison_columns(
+            self.annotated_results,
+            default_test_level="treated",
+            reference_level="control",
+        )
+
+        self.assertTrue(
+            {"comparison", "test_level", "reference_level"} <= set(observed.columns)
+        )
+        self.assertEqual(observed["comparison"].nunique(), 1)
+        self.assertEqual(observed.loc[0, "comparison"], "treated vs. control")
+        self.assertEqual(observed.loc[0, "test_level"], "treated")
+        self.assertEqual(observed.loc[0, "reference_level"], "control")
+
     def test_summarize_results_counts_expected_categories(self):
         observed = visualizers._summarize_results(self.annotated_results, alpha=0.05)
 
@@ -199,7 +244,7 @@ class TestVisualizers(TestPluginBase):
                 output_path,
                 run_result=self.run_result,
                 alpha=0.05,
-                display_results=self.annotated_results,
+                display_results=self.annotated_multi_results,
                 include_annotated_results=True,
             )
 
@@ -210,13 +255,17 @@ class TestVisualizers(TestPluginBase):
             self.assertEqual(
                 (output_path / "volcano_plot.png").read_bytes(), b"volcano-plot"
             )
-            self.assertTrue((output_path / "data" / "volcano_data.json").exists())
-            self.assertTrue((output_path / "data" / "ma_data.json").exists())
             self.assertTrue((output_path / "data" / "results_table.json").exists())
             self.assertTrue((output_path / "css" / "styles.css").exists())
             self.assertTrue((output_path / "js" / "linked_plots.js").exists())
             self.assertTrue((output_path / "vega" / "volcano.json").exists())
             self.assertTrue((output_path / "vega" / "ma.json").exists())
+
+            report_payload = json.loads(
+                (output_path / "data" / "results_table.json").read_text(
+                    encoding="utf-8"
+                )
+            )
 
         self.assertEqual(captured["output_dir"], temp_dir)
         self.assertEqual(
@@ -230,11 +279,17 @@ class TestVisualizers(TestPluginBase):
                 {"title": "Results table", "url": "table.html"},
             ],
         )
-        self.assertEqual(captured["context"]["contrast_label"], "treated vs. control")
+        self.assertEqual(captured["context"]["default_comparison"], "other vs. control")
         self.assertTrue(captured["context"]["include_annotated_results_file"])
         self.assertEqual(captured["context"]["summary"]["total_features"], 3)
         self.assertEqual(captured["context"]["summary"]["significant_features"], 1)
         self.assertEqual(captured["context"]["summary"]["annotated_features"], 3)
+        self.assertEqual(
+            len(json.loads(captured["context"]["comparison_options_json"])), 2
+        )
+        self.assertEqual(report_payload["columns"][0], "feature_id")
+        self.assertEqual(len(report_payload["data"]), 6)
+        self.assertIn("comparison", report_payload["columns"])
 
     @patch("q2_deseq2.visualizers._write_visualization_output")
     @patch("q2_deseq2.visualizers._parse_run_results")
@@ -277,7 +332,7 @@ class TestVisualizers(TestPluginBase):
         load_loci_mock.return_value = pd.DataFrame(
             [{"feature_id": "GG_OTU_1", "gene_name": "dnaA", "product": "Replication"}]
         )
-        add_annotations_mock.return_value = self.annotated_results
+        add_annotations_mock.return_value = self.annotated_multi_results
 
         visualizers._visualize(
             output_dir="fake-output",
@@ -294,6 +349,6 @@ class TestVisualizers(TestPluginBase):
             Path("fake-output"),
             run_result=self.run_result,
             alpha=0.05,
-            display_results=self.annotated_results,
+            display_results=self.annotated_multi_results,
             include_annotated_results=True,
         )

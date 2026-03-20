@@ -5,8 +5,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   const maLayout = maContainer ? maContainer.parentElement : null;
   const volcanoSpecNode = document.getElementById("vega_volcano_spec");
   const maSpecNode = document.getElementById("vega_ma_spec");
-  const volcanoDataPathNode = document.getElementById("volcano_data_path");
-  const maDataPathNode = document.getElementById("ma_data_path");
+  const resultsDataPathNode = document.getElementById("results_data_path");
+  const comparisonOptionsNode = document.getElementById("comparison_options");
+  const defaultComparisonNode = document.getElementById("default_comparison");
+  const comparisonSelect = document.getElementById("comparison-select");
+  const comparisonLabelNodes = document.querySelectorAll("[data-selected-comparison]");
   const volcanoErrorNode = document.getElementById("volcano-error");
   const maErrorNode = document.getElementById("ma-error");
   const volcanoFallbackNode = document.getElementById("volcano-fallback");
@@ -15,15 +18,54 @@ document.addEventListener("DOMContentLoaded", async () => {
   const lfcInput = document.getElementById("lfc-cutoff-input");
   const resetButton = document.getElementById("plot-controls-reset");
   const significantNode = document.getElementById("summary-significant-features");
+  const testedNode = document.getElementById("summary-total-features");
+  const annotatedNode = document.getElementById("summary-annotated-features");
 
   if (
     !volcanoContainer || !maContainer || !volcanoLayout || !maLayout
     || !volcanoSpecNode || !maSpecNode
-    || !volcanoDataPathNode || !maDataPathNode
-    || !alphaInput || !lfcInput
+    || !resultsDataPathNode || !comparisonOptionsNode || !defaultComparisonNode
+    || !comparisonSelect || !alphaInput || !lfcInput
   ) {
     return;
   }
+
+  const comparisonPersistenceKey = "q2_deseq2_selected_comparison";
+  const alphaPersistenceKey = "q2_deseq2_alpha_cutoff";
+  const lfcPersistenceKey = "q2_deseq2_lfc_cutoff";
+
+  const parseJsonNode = (node, fallback) => {
+    try {
+      return JSON.parse(node.textContent);
+    } catch {
+      return fallback;
+    }
+  };
+
+  const formatComparison = (testLevel, referenceLevel) => {
+    if (!testLevel || !referenceLevel) {
+      return "";
+    }
+    return `${testLevel} vs. ${referenceLevel}`;
+  };
+
+  const parseNumeric = (value) => {
+    if (value === null || value === "") {
+      return null;
+    }
+    if (typeof value === "number") {
+      return Number.isFinite(value) ? value : null;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed === "") {
+        return null;
+      }
+      const parsed = Number.parseFloat(trimmed);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+  };
 
   const formatAlpha = (value) => {
     const numeric = Number.parseFloat(value);
@@ -66,10 +108,49 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
   };
 
+  const readPersistedComparison = (availableComparisons) => {
+    try {
+      const persisted = window.localStorage.getItem(comparisonPersistenceKey);
+      if (persisted && availableComparisons.includes(persisted)) {
+        return persisted;
+      }
+    } catch {}
+    return null;
+  };
+
+  const persistComparison = (comparison) => {
+    try {
+      window.localStorage.setItem(comparisonPersistenceKey, comparison);
+    } catch {}
+  };
+
+  const readPersistedNumeric = (key, bounds) => {
+    try {
+      const persisted = Number.parseFloat(window.localStorage.getItem(key));
+      if (Number.isFinite(persisted)) {
+        return clamp(persisted, bounds.min, bounds.max);
+      }
+    } catch {}
+    return null;
+  };
+
+  const persistNumeric = (key, value) => {
+    try {
+      window.localStorage.setItem(key, String(value));
+    } catch {}
+  };
+
+  const comparisonOptions = parseJsonNode(comparisonOptionsNode, []);
+  const configuredDefaultComparison = parseJsonNode(defaultComparisonNode, "");
+  const resultsDataPath = parseJsonNode(resultsDataPathNode, "");
+
   const alphaBounds = readBounds(alphaInput, 0.05);
   const lfcBounds = readBounds(lfcInput, 1.0);
-  let currentAlpha = clamp(alphaBounds.defaultValue, alphaBounds.min, alphaBounds.max);
-  let currentLfc = clamp(lfcBounds.defaultValue, lfcBounds.min, lfcBounds.max);
+  let currentAlpha = readPersistedNumeric(alphaPersistenceKey, alphaBounds)
+    ?? clamp(alphaBounds.defaultValue, alphaBounds.min, alphaBounds.max);
+  let currentLfc = readPersistedNumeric(lfcPersistenceKey, lfcBounds)
+    ?? clamp(lfcBounds.defaultValue, lfcBounds.min, lfcBounds.max);
+  let activePlotData = [];
 
   const parseControlValue = (input, bounds, fallback) => {
     const parsed = Number.parseFloat(input.value);
@@ -85,33 +166,105 @@ document.addEventListener("DOMContentLoaded", async () => {
   };
 
   try {
-    const [volcanoResponse, maResponse] = await Promise.all([
-      fetch(volcanoDataPathNode.textContent.trim()),
-      fetch(maDataPathNode.textContent.trim()),
-    ]);
-    if (!volcanoResponse.ok) {
-      throw new Error(`Failed to load volcano data: ${volcanoResponse.status}`);
-    }
-    if (!maResponse.ok) {
-      throw new Error(`Failed to load MA data: ${maResponse.status}`);
+    const response = await fetch(resultsDataPath);
+    if (!response.ok) {
+      throw new Error(`Failed to load ${resultsDataPath}: ${response.status}`);
     }
 
-    const [volcanoData, maData] = await Promise.all([
-      volcanoResponse.json(),
-      maResponse.json(),
-    ]);
+    const payload = await response.json();
+    const columns = payload.columns || [];
+    const rows = payload.data || [];
+    const records = rows.map((row) => {
+      const record = {};
+      columns.forEach((name, index) => {
+        record[name] = row[index];
+      });
+      record.comparison = record.comparison
+        || formatComparison(record.test_level, record.reference_level)
+        || configuredDefaultComparison;
+      return record;
+    });
+
+    const rowsByComparison = new Map();
+    const optionByComparison = new Map();
+    comparisonOptions.forEach((option) => {
+      optionByComparison.set(option.comparison, option);
+      rowsByComparison.set(option.comparison, []);
+    });
+    records.forEach((record) => {
+      if (!rowsByComparison.has(record.comparison)) {
+        rowsByComparison.set(record.comparison, []);
+      }
+      rowsByComparison.get(record.comparison).push(record);
+    });
+
+    const availableComparisons = Array.from(rowsByComparison.keys()).filter(Boolean);
+    if (availableComparisons.length === 0) {
+      throw new Error("No comparisons were available in the DESeq2 results table.");
+    }
+
+    availableComparisons.forEach((comparison) => {
+      const option = document.createElement("option");
+      option.value = comparison;
+      option.textContent = comparison;
+      comparisonSelect.append(option);
+    });
+
+    const initialComparison = readPersistedComparison(availableComparisons)
+      || (availableComparisons.includes(configuredDefaultComparison)
+        ? configuredDefaultComparison
+        : availableComparisons[0]);
+    comparisonSelect.value = initialComparison;
+
+    const buildPlotData = (comparison) => {
+      return (rowsByComparison.get(comparison) || []).map((row) => ({
+        feature_id: row.feature_id == null ? "" : String(row.feature_id),
+        gene_name: row.gene_name == null || row.gene_name === "" ? null : String(row.gene_name),
+        product: row.product == null || row.product === "" ? null : String(row.product),
+        log2FoldChange: parseNumeric(row.log2FoldChange),
+        pvalue: parseNumeric(row.pvalue),
+        padj: parseNumeric(row.padj),
+        baseMean: parseNumeric(row.baseMean),
+      }));
+    };
+
+    const setComparisonLabel = (comparison) => {
+      comparisonLabelNodes.forEach((node) => {
+        node.textContent = comparison;
+      });
+    };
 
     const volcanoSpec = JSON.parse(volcanoSpecNode.textContent);
-    volcanoSpec.data[0].values = volcanoData;
     volcanoSpec.width = measureWidth(volcanoLayout);
+    volcanoSpec.data[0].values = buildPlotData(initialComparison);
 
     const maSpec = JSON.parse(maSpecNode.textContent);
-    maSpec.data[0].values = maData;
     maSpec.width = measureWidth(maLayout);
+    maSpec.data[0].values = buildPlotData(initialComparison);
 
     const [volcanoResult, maResult] = await Promise.all([
-      vegaEmbed("#volcano-view", volcanoSpec, { actions: false, renderer: "canvas" }),
-      vegaEmbed("#ma-view", maSpec, { actions: false, renderer: "canvas" }),
+      vegaEmbed("#volcano-view", volcanoSpec, {
+        renderer: "canvas",
+        actions: {
+          export: { png: true, svg: true },
+          source: false,
+          compiled: false,
+          editor: false,
+        },
+        downloadFileName: "deseq2-volcano-plot",
+        scaleFactor: { png: 2, svg: 1 },
+      }),
+      vegaEmbed("#ma-view", maSpec, {
+        renderer: "canvas",
+        actions: {
+          export: { png: true, svg: true },
+          source: false,
+          compiled: false,
+          editor: false,
+        },
+        downloadFileName: "deseq2-ma-plot",
+        scaleFactor: { png: 2, svg: 1 },
+      }),
     ]);
 
     if (volcanoFallbackNode) {
@@ -126,29 +279,53 @@ document.addEventListener("DOMContentLoaded", async () => {
       { view: maResult.view, layout: maLayout, width: maSpec.width },
     ];
 
-    const plottableData = volcanoData.filter((datum) => (
-      Number.isFinite(datum.log2FoldChange)
-      && Number.isFinite(datum.padj)
-      && datum.padj > 0
-    ));
-
     const updateSummary = (alphaCutoff, lfcCutoff) => {
+      const plottableData = activePlotData.filter((datum) => (
+        Number.isFinite(datum.log2FoldChange)
+        && Number.isFinite(datum.padj)
+        && datum.padj > 0
+      ));
       const significantCount = plottableData.filter((datum) => (
         datum.padj <= alphaCutoff && Math.abs(datum.log2FoldChange) >= lfcCutoff
       )).length;
+      const annotatedCount = activePlotData.filter((datum) => (
+        (typeof datum.gene_name === "string" && datum.gene_name.trim() !== "")
+        || (typeof datum.product === "string" && datum.product.trim() !== "")
+      )).length;
+
       if (significantNode) {
         significantNode.textContent = significantCount.toLocaleString();
+      }
+      if (testedNode) {
+        testedNode.textContent = activePlotData.length.toLocaleString();
+      }
+      if (annotatedNode) {
+        annotatedNode.textContent = annotatedCount.toLocaleString();
       }
     };
 
     const pushControlState = () => {
       syncControlInputs();
+      persistNumeric(alphaPersistenceKey, currentAlpha);
+      persistNumeric(lfcPersistenceKey, currentLfc);
       updateSummary(currentAlpha, currentLfc);
       views.forEach(({ view }) => {
         view.signal("alphaCutoff", currentAlpha);
         view.signal("lfcCutoff", currentLfc);
       });
       Promise.all(views.map(({ view }) => view.runAsync())).catch(() => {});
+    };
+
+    const applyComparison = (comparison) => {
+      activePlotData = buildPlotData(comparison);
+      setComparisonLabel(comparison);
+      persistComparison(comparison);
+      views.forEach(({ view }) => {
+        view.signal("hoveredFeatureId", null);
+        view.signal("linkedHoveredFeatureId", null);
+        view.data("points", activePlotData);
+      });
+      pushControlState();
     };
 
     const commitControlState = () => {
@@ -170,6 +347,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     lfcInput.addEventListener("input", commitControlInput);
     lfcInput.addEventListener("change", commitControlState);
     lfcInput.addEventListener("blur", commitControlState);
+    comparisonSelect.addEventListener("change", () => {
+      applyComparison(comparisonSelect.value);
+    });
     if (resetButton) {
       resetButton.addEventListener("click", () => {
         currentAlpha = clamp(alphaBounds.defaultValue, alphaBounds.min, alphaBounds.max);
@@ -177,7 +357,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         pushControlState();
       });
     }
-    pushControlState();
+
+    applyComparison(initialComparison);
 
     volcanoResult.view.addSignalListener("hoveredFeatureId", (_, value) => {
       maResult.view.signal("linkedHoveredFeatureId", value).runAsync();

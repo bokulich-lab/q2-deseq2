@@ -162,7 +162,9 @@ def _load_vega_spec(spec_name: str) -> dict:
     return json.loads(spec_path.read_text(encoding="utf-8"))
 
 
-def _summarize_results(result_table: pd.DataFrame, alpha: float) -> dict[str, int | str]:
+def _summarize_results(
+    result_table: pd.DataFrame, alpha: float
+) -> dict[str, int | str]:
     log2fc = pd.to_numeric(result_table.get("log2FoldChange"), errors="coerce")
     padj = pd.to_numeric(result_table.get("padj"), errors="coerce")
     plottable_mask = log2fc.notna() & padj.notna() & (padj > 0)
@@ -207,9 +209,7 @@ def _render_report(
     include_annotated_results_file: bool,
 ) -> None:
     if q2templates is None:
-        raise ImportError(
-            "q2templates is required to render the DESeq2 visualization."
-        )
+        raise ImportError("q2templates is required to render the DESeq2 visualization.")
 
     _copy_report_assets(output_dir)
     data_dir = output_dir / "data"

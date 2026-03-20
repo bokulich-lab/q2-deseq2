@@ -1,0 +1,4 @@
+##gff-version 3
+chr1	source	gene	1	100	.	+	.	ID=GG_OTU_1;gene=dnaA;product=Replication%20initiator
+chr1	source	gene	200	300	.	+	.	ID=GG_OTU_2;Name=gene-b;Note=Some%20product
+chr1	source	gene	400	500	.	-	.	ID=feature-3;locus_tag=GG_OTU_3;product=Third%20product

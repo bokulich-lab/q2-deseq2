@@ -5,9 +5,9 @@
 #
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
-import html
 import json
 from pathlib import Path
+from shutil import copytree
 from urllib.parse import unquote
 
 import pandas as pd
@@ -17,9 +17,12 @@ from q2_deseq2._run_data import _parse_run_results
 from q2_deseq2.methods import DESeq2RunResult
 from q2_deseq2.types import DESeq2RunDirectoryFormat
 
-_ASSETS_DIR = Path(__file__).resolve().parent / "assets"
-_HTML_TEMPLATE_PATH = _ASSETS_DIR / "deseq2_report.html"
-_VEGA_SPEC_TEMPLATE_PATH = _ASSETS_DIR / "volcano_spec.json"
+try:
+    import q2templates
+except ImportError:  # pragma: no cover - exercised in QIIME 2 environments
+    q2templates = None
+
+_ASSETS_DIR = Path(__file__).resolve().parent / "assets" / "deseq2"
 
 
 def _value_or_none(value):
@@ -124,7 +127,7 @@ def _add_annotations(
     return merged
 
 
-def _build_volcano_records(result_table: pd.DataFrame) -> list[dict]:
+def _build_plot_records(result_table: pd.DataFrame) -> list[dict]:
     records = []
     for _, row in result_table.iterrows():
         feature_id = row.get("feature_id")
@@ -154,48 +157,101 @@ def _build_volcano_records(result_table: pd.DataFrame) -> list[dict]:
     return records
 
 
-def _render_index_html(
+def _load_vega_spec(spec_name: str) -> dict:
+    spec_path = _ASSETS_DIR / "vega" / f"{spec_name}.json"
+    return json.loads(spec_path.read_text(encoding="utf-8"))
+
+
+def _summarize_results(result_table: pd.DataFrame, alpha: float) -> dict[str, int | str]:
+    log2fc = pd.to_numeric(result_table.get("log2FoldChange"), errors="coerce")
+    padj = pd.to_numeric(result_table.get("padj"), errors="coerce")
+    plottable_mask = log2fc.notna() & padj.notna() & (padj > 0)
+    significant_mask = plottable_mask & (padj <= alpha)
+
+    summary = {
+        "total_features": int(len(result_table)),
+        "plottable_features": int(plottable_mask.sum()),
+        "significant_features": int(significant_mask.sum()),
+        "alpha_display": str(alpha),
+    }
+    if {"gene_name", "product"} & set(result_table.columns):
+        annotated_mask = pd.Series(False, index=result_table.index)
+        for column in ["gene_name", "product"]:
+            if column in result_table.columns:
+                annotated_mask = annotated_mask | result_table[column].notna()
+        summary["annotated_features"] = int(annotated_mask.sum())
+
+    return summary
+
+
+def _prepare_table_payload(result_table: pd.DataFrame) -> str:
+    serializable = result_table.astype(object).where(pd.notna(result_table), None)
+    columns = [str(column) for column in serializable.columns]
+    rows = serializable.loc[:, columns].values.tolist()
+    return json.dumps({"columns": columns, "data": rows}).replace("NaN", "null")
+
+
+def _copy_report_assets(output_dir: Path) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for folder in ["css", "js", "vega"]:
+        src_dir = _ASSETS_DIR / folder
+        if src_dir.exists():
+            copytree(src_dir, output_dir / folder, dirs_exist_ok=True)
+
+
+def _render_report(
     output_dir: Path,
     result_table: pd.DataFrame,
     contrast_label: str,
     alpha: float,
     include_annotated_results_file: bool,
 ) -> None:
-    volcano_records = _build_volcano_records(result_table)
+    if q2templates is None:
+        raise ImportError(
+            "q2templates is required to render the DESeq2 visualization."
+        )
 
-    volcano_spec = json.loads(_VEGA_SPEC_TEMPLATE_PATH.read_text(encoding="utf-8"))
+    _copy_report_assets(output_dir)
+    data_dir = output_dir / "data"
+    data_dir.mkdir(exist_ok=True)
+    (data_dir / "volcano_data.json").write_text(
+        json.dumps(_build_plot_records(result_table)).replace("NaN", "null"),
+        encoding="utf-8",
+    )
+    (data_dir / "ma_data.json").write_text(
+        json.dumps(_build_plot_records(result_table)).replace("NaN", "null"),
+        encoding="utf-8",
+    )
+    (data_dir / "results_table.json").write_text(
+        _prepare_table_payload(result_table), encoding="utf-8"
+    )
+
+    volcano_spec = _load_vega_spec("volcano")
     volcano_spec["signals"][0]["value"] = alpha
-    volcano_spec["data"][0]["values"] = volcano_records
-    volcano_spec_json = json.dumps(volcano_spec, separators=(",", ":"))
+    ma_spec = _load_vega_spec("ma")
+    ma_spec["signals"][0]["value"] = alpha
+    summary = _summarize_results(result_table, alpha)
 
-    preview_columns = ["feature_id"]
-    for optional_column in ["gene_name", "product"]:
-        if (
-            optional_column in result_table.columns
-            and result_table[optional_column].notna().any()
-        ):
-            preview_columns.append(optional_column)
-    preview_columns.extend(
-        column
-        for column in ["log2FoldChange", "pvalue", "padj"]
-        if column in result_table.columns
-    )
-    preview_table = result_table.loc[:, preview_columns].head(25)
-    preview_html = preview_table.to_html(index=False, border=0, classes="preview")
-
-    additional_file_list = ""
-    if include_annotated_results_file:
-        additional_file_list = '<li><a href="deseq2_results_annotated.tsv">deseq2_results_annotated.tsv</a></li>'
-
-    index_html_template = _HTML_TEMPLATE_PATH.read_text(encoding="utf-8")
-    index_html = (
-        index_html_template.replace("__CONTRAST__", html.escape(contrast_label))
-        .replace("__ALPHA__", str(alpha))
-        .replace("__PREVIEW_TABLE__", preview_html)
-        .replace("__ANNOTATED_RESULTS_FILE__", additional_file_list)
-        .replace("__VOLCANO_SPEC__", volcano_spec_json)
-    )
-    (output_dir / "index.html").write_text(index_html, encoding="utf-8")
+    templates = [
+        str(_ASSETS_DIR / "index.html"),
+        str(_ASSETS_DIR / "table.html"),
+    ]
+    context = {
+        "tabs": [
+            {"title": "Overview", "url": "index.html"},
+            {"title": "Results table", "url": "table.html"},
+        ],
+        "contrast_label": contrast_label,
+        "alpha": str(alpha),
+        "summary": summary,
+        "vega_volcano_spec": json.dumps(volcano_spec),
+        "vega_ma_spec": json.dumps(ma_spec),
+        "volcano_data_path": "data/volcano_data.json",
+        "ma_data_path": "data/ma_data.json",
+        "table_data_path": "data/results_table.json",
+        "include_annotated_results_file": include_annotated_results_file,
+    }
+    q2templates.render(templates, str(output_dir), context=context)
 
 
 def _write_visualization_output(
@@ -220,7 +276,7 @@ def _write_visualization_output(
     (output_path / "volcano_plot.png").write_bytes(run_result.volcano_plot_png)
 
     contrast_label = f"{run_result.test_level} vs. {run_result.reference_level}"
-    _render_index_html(
+    _render_report(
         output_path,
         result_table=display_results,
         contrast_label=contrast_label,

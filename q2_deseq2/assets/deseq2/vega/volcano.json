@@ -1,48 +1,33 @@
 {
   "$schema": "https://vega.github.io/schema/vega/v5.json",
   "description": "Interactive DESeq2 volcano plot.",
+  "autosize": {
+    "type": "fit-x",
+    "contains": "padding",
+    "resize": true
+  },
   "width": 860,
   "height": 500,
-  "padding": {"left": 75, "top": 10, "right": 20, "bottom": 60},
+  "padding": {"left": 15, "top": 10, "right": 20, "bottom": 60},
   "signals": [
+    {"name": "alphaCutoff", "value": 0.05},
+    {"name": "lfcCutoff", "value": 1.0},
     {
-      "name": "alphaCutoff",
-      "value": 0.05,
-      "bind": {
-        "input": "range",
-        "min": 0.0001,
-        "max": 0.25,
-        "step": 0.0001,
-        "name": "Adjusted p-value cutoff "
-      }
+      "name": "hoveredFeatureId",
+      "value": null,
+      "on": [
+        {"events": "@pointsMark:mouseover", "update": "datum.feature_id"},
+        {"events": "@pointsMark:mouseout", "update": "null"}
+      ]
     },
-    {
-      "name": "lfcCutoff",
-      "value": 1.0,
-      "bind": {
-        "input": "range",
-        "min": 0.0,
-        "max": 5.0,
-        "step": 0.1,
-        "name": "|log2FC| cutoff "
-      }
-    }
+    {"name": "linkedHoveredFeatureId", "value": null}
   ],
   "data": [
     {
       "name": "points",
       "values": [],
       "transform": [
-        {
-          "type": "formula",
-          "as": "plot_p",
-          "expr": "datum.padj > 0 ? datum.padj : (datum.pvalue > 0 ? datum.pvalue : null)"
-        },
-        {
-          "type": "formula",
-          "as": "plot_p_source",
-          "expr": "datum.padj > 0 ? 'padj' : (datum.pvalue > 0 ? 'pvalue' : 'none')"
-        },
+        {"type": "formula", "as": "plot_p", "expr": "datum.padj > 0 ? datum.padj : null"},
         {
           "type": "filter",
           "expr": "isValid(datum.log2FoldChange) && isFinite(datum.log2FoldChange) && datum.plot_p != null && isFinite(datum.plot_p)"
@@ -54,23 +39,7 @@
           "as": "sig_flag",
           "expr": "datum.plot_p <= alphaCutoff && datum.abs_lfc >= lfcCutoff ? 1 : 0"
         },
-        {
-          "type": "formula",
-          "as": "sig_label",
-          "expr": "datum.sig_flag ? 'Significant' : 'Not significant'"
-        }
-      ]
-    },
-    {
-      "name": "summary",
-      "source": "points",
-      "transform": [
-        {
-          "type": "aggregate",
-          "ops": ["count", "sum"],
-          "fields": [null, "sig_flag"],
-          "as": ["total", "significant"]
-        }
+        {"type": "formula", "as": "sig_label", "expr": "datum.sig_flag ? 'Significant' : 'Not significant'"}
       ]
     }
   ],
@@ -99,11 +68,20 @@
     }
   ],
   "axes": [
-    {"orient": "bottom", "scale": "x", "title": "log2 fold change"},
-    {"orient": "left", "scale": "y", "title": "-log10 adjusted p-value (fallback to p-value)"}
-  ],
-  "legends": [
-    {"fill": "color", "title": "Classification", "orient": "top-right"}
+    {
+      "orient": "bottom",
+      "scale": "x",
+      "title": "log2 fold change",
+      "labelFontSize": 14,
+      "titleFontSize": 16
+    },
+    {
+      "orient": "left",
+      "scale": "y",
+      "title": "-log10 adjusted p-value",
+      "labelFontSize": 14,
+      "titleFontSize": 16
+    }
   ],
   "marks": [
     {
@@ -155,10 +133,11 @@
     },
     {
       "type": "symbol",
+      "name": "pointsMark",
       "from": {"data": "points"},
       "encode": {
         "enter": {
-          "size": {"value": 45},
+          "size": {"value": 36},
           "opacity": {"value": 0.75},
           "stroke": {"value": "#ffffff"},
           "strokeWidth": {"value": 0.4}
@@ -167,25 +146,20 @@
           "x": {"scale": "x", "field": "log2FoldChange"},
           "y": {"scale": "y", "field": "neg_log10_p"},
           "fill": {"scale": "color", "field": "sig_label"},
+          "opacity": {
+            "signal": "(hoveredFeatureId || linkedHoveredFeatureId) ? (datum.feature_id === (hoveredFeatureId || linkedHoveredFeatureId) ? 1 : 0.25) : 0.75"
+          },
+          "size": {
+            "signal": "datum.feature_id === (hoveredFeatureId || linkedHoveredFeatureId) ? 110 : 36"
+          },
+          "stroke": {
+            "signal": "datum.feature_id === (hoveredFeatureId || linkedHoveredFeatureId) ? '#111827' : '#ffffff'"
+          },
+          "strokeWidth": {
+            "signal": "datum.feature_id === (hoveredFeatureId || linkedHoveredFeatureId) ? 1.4 : 0.4"
+          },
           "tooltip": {
-            "signal": "{'gene_id': datum.feature_id, 'gene_name': datum.gene_name, 'product': datum.product, 'log2FoldChange': format(datum.log2FoldChange, '.4f'), 'plot_p': datum.plot_p, 'plot_p_source': datum.plot_p_source, 'padj': datum.padj, 'pvalue': datum.pvalue, 'baseMean': datum.baseMean}"
-          }
-        },
-        "hover": {"opacity": {"value": 1}, "size": {"value": 100}}
-      }
-    },
-    {
-      "type": "text",
-      "encode": {
-        "enter": {
-          "x": {"value": 8},
-          "y": {"value": -4},
-          "fontSize": {"value": 12},
-          "fill": {"value": "#111827"}
-        },
-        "update": {
-          "text": {
-            "signal": "data('summary').length ? 'Significant genes: ' + format(data('summary')[0].significant, ',') + ' / ' + format(data('summary')[0].total, ',') : 'No plottable points in result table.'"
+            "signal": "{'feature_id': datum.feature_id, 'gene_name': datum.gene_name, 'product': datum.product, 'log2FoldChange': format(datum.log2FoldChange, '.4f'), 'padj': datum.padj, 'pvalue': datum.pvalue, 'baseMean': datum.baseMean}"
           }
         }
       }

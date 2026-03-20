@@ -1,0 +1,41 @@
+{% extends "tabbed.html" %}
+
+{% block head %}
+<title>DESeq2 result table</title>
+<link href="css/styles.css" rel="stylesheet" />
+<link href="https://cdn.datatables.net/2.3.4/css/dataTables.dataTables.min.css" rel="stylesheet" />
+<script src="https://cdn.datatables.net/2.3.4/js/dataTables.min.js" type="text/javascript"></script>
+<script src="js/table.js" type="text/javascript"></script>
+{% endblock %}
+
+{% block tabcontent %}
+<div class="row top-spaced-row">
+  <div class="col-lg-12">
+    <div class="report-header">
+      <h3 class="report-title">DESeq2 result table</h3>
+      <p class="text-muted">
+        Explore the full result table for <code>{{ contrast_label }}</code>.
+        Use the search box or sort headers to inspect specific loci, genes, or
+        test statistics, then download the raw files if needed.
+      </p>
+
+      <div class="results-actions">
+        <a href="deseq2_results.tsv" class="btn btn-default">Download results TSV</a>
+        {% if include_annotated_results_file %}
+        <a href="deseq2_results_annotated.tsv" class="btn btn-default">Download annotated TSV</a>
+        {% endif %}
+        <a href="normalized_counts.tsv" class="btn btn-default">Download normalized counts TSV</a>
+      </div>
+    </div>
+
+    <div id="results-table-error" class="alert alert-danger" hidden></div>
+    <div class="table-responsive">
+      <table id="results-table" class="display compact stripe" style="width:100%"></table>
+    </div>
+  </div>
+</div>
+
+<script id="table_data_path" type="application/json">
+{{ table_data_path }}
+</script>
+{% endblock %}

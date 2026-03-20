@@ -209,13 +209,7 @@ def _write_r_script(script_fp: Path) -> None:
         plotMA(res, alpha = alpha, main = paste("DESeq2 MA plot:", plot_label))
         dev.off()
 
-        y_values <- if ("padj" %in% colnames(res_df)) {
-          -log10(res_df$padj)
-        } else if ("pvalue" %in% colnames(res_df)) {
-          -log10(res_df$pvalue)
-        } else {
-          rep(NA_real_, nrow(res_df))
-        }
+        y_values <- -log10(res_df$padj)
         finite_idx <- is.finite(res_df$log2FoldChange) & is.finite(y_values)
 
         png(filename = volcano_plot_path, width = 1200, height = 900)

@@ -329,6 +329,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       },
     ];
 
+    const linkHoverSignals = (sourceView, targetView) => {
+      sourceView.addSignalListener("hoveredFeatureId", (_name, value) => {
+        targetView.signal("linkedHoveredFeatureId", value ?? null);
+        targetView.runAsync().catch(() => {});
+      });
+    };
+
+    linkHoverSignals(volcanoResult.view, maResult.view);
+    linkHoverSignals(maResult.view, volcanoResult.view);
+
     const updateSummary = (alphaCutoff, lfcCutoff) => {
       const plottableData = activePlotData.filter((datum) => (
         Number.isFinite(datum.log2FoldChange)
@@ -369,6 +379,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     const applyEffect = (effectId) => {
       activePlotData = buildPlotData(effectId);
       views.forEach(({ view, dataName }) => {
+        view.signal("hoveredFeatureId", null);
+        view.signal("linkedHoveredFeatureId", null);
         view.change(
           dataName,
           vega

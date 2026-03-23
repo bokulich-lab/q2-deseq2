@@ -275,6 +275,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     maSpec.width = measureWidth(maLayout);
     maSpec.data[0].values = buildPlotData(initialEffectId);
 
+    const volcanoDataName = Array.isArray(volcanoSpec.data) && volcanoSpec.data[0]
+      ? volcanoSpec.data[0].name
+      : "points";
+    const maDataName = Array.isArray(maSpec.data) && maSpec.data[0]
+      ? maSpec.data[0].name
+      : "points";
+
     const [volcanoResult, maResult] = await Promise.all([
       vegaEmbed("#volcano-view", volcanoSpec, {
         renderer: "canvas",
@@ -308,8 +315,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     const views = [
-      { view: volcanoResult.view, layout: volcanoLayout, width: volcanoSpec.width },
-      { view: maResult.view, layout: maLayout, width: maSpec.width },
+      {
+        view: volcanoResult.view,
+        layout: volcanoLayout,
+        width: volcanoSpec.width,
+        dataName: volcanoDataName,
+      },
+      {
+        view: maResult.view,
+        layout: maLayout,
+        width: maSpec.width,
+        dataName: maDataName,
+      },
     ];
 
     const updateSummary = (alphaCutoff, lfcCutoff) => {
@@ -351,9 +368,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const applyEffect = (effectId) => {
       activePlotData = buildPlotData(effectId);
-      views.forEach(({ view }) => {
+      views.forEach(({ view, dataName }) => {
         view.change(
-          "results",
+          dataName,
           vega
             .changeset()
             .remove(() => true)

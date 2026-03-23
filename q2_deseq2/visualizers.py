@@ -5,8 +5,6 @@
 #
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
-from __future__ import annotations
-
 import json
 from pathlib import Path
 from shutil import copytree

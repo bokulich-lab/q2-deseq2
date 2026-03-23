@@ -5,6 +5,8 @@
 #
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
+from __future__ import annotations
+
 import json
 from pathlib import Path
 from shutil import copytree
@@ -13,8 +15,7 @@ from urllib.parse import unquote
 import pandas as pd
 from q2_types.genome_data import LociDirectoryFormat
 
-from q2_deseq2._run_data import _parse_run_results
-from q2_deseq2.methods import DESeq2RunResult
+from q2_deseq2._run_data import DESeq2RunResult, _parse_run_results
 from q2_deseq2.types import DESeq2RunDirectoryFormat
 
 try:
@@ -202,32 +203,97 @@ def _ensure_comparison_columns(
     return enriched
 
 
-def _collect_comparison_options(
-    result_table: pd.DataFrame, default_comparison: str
-) -> tuple[list[dict[str, str]], str]:
-    comparison_frame = (
-        result_table.loc[:, ["comparison", "test_level", "reference_level"]]
+def _legacy_effect_id(
+    comparison: str, test_level: str, reference_level: str
+) -> str:
+    if test_level and reference_level:
+        return f"legacy::{test_level}::{reference_level}"
+    if comparison:
+        return f"legacy::{comparison}"
+    return "legacy::effect"
+
+
+def _ensure_effect_columns(
+    result_table: pd.DataFrame,
+    default_effect_id: str,
+    default_test_level: str,
+    reference_level: str,
+) -> tuple[pd.DataFrame, str]:
+    enriched = _ensure_comparison_columns(
+        result_table,
+        default_test_level=default_test_level,
+        reference_level=reference_level,
+    )
+
+    if "effect_id" not in enriched.columns:
+        enriched["effect_id"] = ""
+    if "effect_label" not in enriched.columns:
+        enriched["effect_label"] = ""
+    if "effect_kind" not in enriched.columns:
+        enriched["effect_kind"] = ""
+    if "effect_expression" not in enriched.columns:
+        enriched["effect_expression"] = ""
+
+    for index, row in enriched.iterrows():
+        comparison = str(row.get("comparison", "") or "").strip()
+        test_level = str(row.get("test_level", "") or "").strip()
+        reference = str(row.get("reference_level", "") or "").strip()
+        effect_id = str(row.get("effect_id", "") or "").strip()
+        effect_label = str(row.get("effect_label", "") or "").strip()
+        effect_kind = str(row.get("effect_kind", "") or "").strip()
+        effect_expression = str(row.get("effect_expression", "") or "").strip()
+
+        if not effect_id:
+            effect_id = _legacy_effect_id(comparison, test_level, reference)
+            enriched.at[index, "effect_id"] = effect_id
+        if not effect_label:
+            effect_label = comparison or effect_id
+            enriched.at[index, "effect_label"] = effect_label
+        if not effect_kind:
+            enriched.at[index, "effect_kind"] = "comparison"
+        if not effect_expression:
+            enriched.at[index, "effect_expression"] = comparison or effect_label
+
+    available_effect_ids = [
+        str(effect_id).strip()
+        for effect_id in enriched["effect_id"].dropna().tolist()
+        if str(effect_id).strip()
+    ]
+    if default_effect_id not in available_effect_ids:
+        default_effect_id = available_effect_ids[0] if available_effect_ids else ""
+
+    return enriched, default_effect_id
+
+
+def _collect_effect_options(
+    result_table: pd.DataFrame, default_effect_id: str
+) -> tuple[list[dict[str, str]], str, str]:
+    effect_frame = (
+        result_table.loc[:, ["effect_id", "effect_label", "effect_kind"]]
         .drop_duplicates()
         .reset_index(drop=True)
     )
-    comparison_options = comparison_frame.to_dict(orient="records")
-    if not comparison_options:
-        comparison_options = [
+    effect_options = effect_frame.to_dict(orient="records")
+    if not effect_options:
+        effect_options = [
             {
-                "comparison": default_comparison,
-                "test_level": "",
-                "reference_level": "",
+                "effect_id": default_effect_id or "legacy::effect",
+                "effect_label": "Effect",
+                "effect_kind": "comparison",
             }
         ]
 
-    known_comparisons = {option["comparison"] for option in comparison_options}
-    if default_comparison not in known_comparisons:
-        default_comparison = comparison_options[0]["comparison"]
+    known_effect_ids = {option["effect_id"] for option in effect_options}
+    if default_effect_id not in known_effect_ids:
+        default_effect_id = effect_options[0]["effect_id"]
 
-    comparison_options.sort(
-        key=lambda option: option["comparison"] != default_comparison
+    effect_options.sort(key=lambda option: option["effect_id"] != default_effect_id)
+    default_effect_label = next(
+        option["effect_label"]
+        for option in effect_options
+        if option["effect_id"] == default_effect_id
     )
-    return comparison_options, default_comparison
+    return effect_options, default_effect_id, default_effect_label
 
 
 def _summarize_results(
@@ -272,6 +338,7 @@ def _copy_report_assets(output_dir: Path) -> None:
 def _render_report(
     output_dir: Path,
     result_table: pd.DataFrame,
+    default_effect_id: str,
     default_test_level: str,
     reference_level: str,
     alpha: float,
@@ -283,8 +350,9 @@ def _render_report(
     _copy_report_assets(output_dir)
     data_dir = output_dir / "data"
     data_dir.mkdir(exist_ok=True)
-    report_results = _ensure_comparison_columns(
+    report_results, default_effect_id = _ensure_effect_columns(
         result_table,
+        default_effect_id=default_effect_id,
         default_test_level=default_test_level,
         reference_level=reference_level,
     )
@@ -296,12 +364,11 @@ def _render_report(
     volcano_spec["signals"][0]["value"] = alpha
     ma_spec = _load_vega_spec("ma")
     ma_spec["signals"][0]["value"] = alpha
-    default_comparison = _format_comparison_label(default_test_level, reference_level)
-    comparison_options, default_comparison = _collect_comparison_options(
-        report_results, default_comparison
+    effect_options, default_effect_id, default_effect_label = _collect_effect_options(
+        report_results, default_effect_id
     )
     default_results = report_results.loc[
-        report_results["comparison"] == default_comparison
+        report_results["effect_id"] == default_effect_id
     ].reset_index(drop=True)
     if default_results.empty:
         default_results = report_results.reset_index(drop=True)
@@ -322,9 +389,9 @@ def _render_report(
         "vega_volcano_spec": json.dumps(volcano_spec),
         "vega_ma_spec": json.dumps(ma_spec),
         "results_data_path_json": json.dumps("data/results_table.json"),
-        "comparison_options_json": json.dumps(comparison_options),
-        "default_comparison_json": json.dumps(default_comparison),
-        "default_comparison": default_comparison,
+        "effect_options_json": json.dumps(effect_options),
+        "default_effect_id_json": json.dumps(default_effect_id),
+        "default_effect_label": default_effect_label,
         "include_annotated_results_file": include_annotated_results_file,
     }
     q2templates.render(templates, str(output_dir), context=context)
@@ -354,6 +421,7 @@ def _write_visualization_output(
     _render_report(
         output_path,
         result_table=display_results,
+        default_effect_id=run_result.default_effect_id,
         default_test_level=run_result.test_level,
         reference_level=run_result.reference_level,
         alpha=alpha,

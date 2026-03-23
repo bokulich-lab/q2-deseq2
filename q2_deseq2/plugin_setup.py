@@ -13,6 +13,8 @@ from qiime2.plugin import (
     Citations,
     Float,
     Int,
+    List,
+    Metadata,
     MetadataColumn,
     Plugin,
     Str,
@@ -33,8 +35,9 @@ from q2_deseq2.types import (
 )
 from q2_deseq2.methods import (
     _estimate_differential_expression,
+    _estimate_model,
 )
-from q2_deseq2.pipelines import estimate
+from q2_deseq2.pipelines import estimate, estimate_model
 from q2_deseq2.types import DESeq2Run, DESeq2Stats
 from q2_deseq2.visualizers import _visualize
 
@@ -112,6 +115,72 @@ plugin.methods.register_function(
     description=(
         "Run DESeq2 differential expression on a feature table and return the "
         "feature-level statistics artifact plus an internal run artifact."
+    ),
+    citations=[citations["Love-2014"]],
+)
+
+plugin.methods.register_function(
+    function=_estimate_model,
+    inputs={"table": FeatureTable[Frequency]},
+    parameters={
+        "metadata": Metadata,
+        "fixed_effects_formula": Str,
+        "reference_levels": List[Str],
+        "effect_specs": List[Str],
+        "test": Str % Choices("wald", "lrt"),
+        "reduced_formula": Str,
+        "min_total_count": Int % Range(0, None),
+        "fit_type": Str % Choices("parametric", "local", "mean"),
+        "alpha": Float % Range(0.0, 1.0),
+        "cooks_cutoff": Bool,
+        "independent_filtering": Bool,
+    },
+    outputs=[("deseq2_stats", FeatureData[DESeq2Stats]), ("deseq2_results", DESeq2Run)],
+    input_descriptions={"table": "A per-sample gene count feature table."},
+    parameter_descriptions={
+        "metadata": "Sample metadata used to construct the DESeq2 design matrix.",
+        "fixed_effects_formula": (
+            "R-style fixed-effects design formula without the response term, "
+            "for example 'genotype + treatment + genotype:treatment'."
+        ),
+        "reference_levels": (
+            "Categorical releveling directives of the form 'column::level'. "
+            "Each listed level becomes the reference baseline for its metadata column."
+        ),
+        "effect_specs": (
+            "Requested model effects to extract. Supported forms are "
+            "'coef::<resultsName>', "
+            "'contrast::<factor>::<numerator>::<denominator>', and "
+            "'simple::<factor>::<numerator>::<denominator>|within::<factor>::<level>'. "
+            "If omitted for Wald tests, all non-intercept coefficients are returned."
+        ),
+        "test": (
+            "DESeq2 test to run. Use 'wald' for coefficient and contrast testing or "
+            "'lrt' for likelihood-ratio testing against a reduced model."
+        ),
+        "reduced_formula": (
+            "Reduced model formula used when test='lrt'. Leave empty for Wald tests."
+        ),
+        "min_total_count": "Filter out genes with total count below this threshold before DESeq2.",
+        "fit_type": "DESeq2 dispersion fit type.",
+        "alpha": "Adjusted p-value cutoff used by DESeq2 for significance summaries.",
+        "cooks_cutoff": "Use Cook's distance cutoff in DESeq2 result filtering.",
+        "independent_filtering": "Enable DESeq2 independent filtering.",
+    },
+    output_descriptions={
+        "deseq2_stats": (
+            "Tabular DESeq2 statistics per gene and extracted model effect including "
+            "effect size and significance metrics."
+        ),
+        "deseq2_results": (
+            "Internal DESeq2 run outputs including normalized counts, fitted-model "
+            "metadata, and effect summaries."
+        ),
+    },
+    name="Estimate a multi-factor DESeq2 model.",
+    description=(
+        "Run DESeq2 using full sample metadata plus a fixed-effects formula and "
+        "return both the feature-level statistics artifact and an internal run artifact."
     ),
     citations=[citations["Love-2014"]],
 )
@@ -197,6 +266,79 @@ plugin.pipelines.register_function(
     description=(
         "Run DESeq2 differential expression and return both the "
         "feature-level statistics artifact and a visualization."
+    ),
+    citations=[citations["Love-2014"]],
+)
+
+plugin.pipelines.register_function(
+    function=estimate_model,
+    inputs={"table": FeatureTable[Frequency], "gene_annotations": GenomeData[Loci]},
+    parameters={
+        "reference_id": Str,
+        "metadata": Metadata,
+        "fixed_effects_formula": Str,
+        "reference_levels": List[Str],
+        "effect_specs": List[Str],
+        "test": Str % Choices("wald", "lrt"),
+        "reduced_formula": Str,
+        "min_total_count": Int,
+        "fit_type": Str % Choices("parametric", "local", "mean"),
+        "alpha": Float,
+        "cooks_cutoff": Bool,
+        "independent_filtering": Bool,
+    },
+    outputs=[
+        ("expression_stats", FeatureData[DESeq2Stats]),
+        ("visualization", Visualization),
+    ],
+    input_descriptions={
+        "table": "A per-sample gene count feature table.",
+        "gene_annotations": (
+            "Optional GenomeData[Loci] annotations in GFF3 format. "
+            "When provided, gene names/products are merged into report outputs."
+        ),
+    },
+    parameter_descriptions={
+        "reference_id": "ID of the reference genome containing the annotations.",
+        "metadata": "Sample metadata used to construct the DESeq2 design matrix.",
+        "fixed_effects_formula": (
+            "R-style fixed-effects design formula without the response term, "
+            "for example 'genotype + treatment + genotype:treatment'."
+        ),
+        "reference_levels": (
+            "Categorical releveling directives of the form 'column::level'. "
+            "Each listed level becomes the reference baseline for its metadata column."
+        ),
+        "effect_specs": (
+            "Requested model effects to extract. Supported forms are "
+            "'coef::<resultsName>', "
+            "'contrast::<factor>::<numerator>::<denominator>', and "
+            "'simple::<factor>::<numerator>::<denominator>|within::<factor>::<level>'."
+        ),
+        "test": (
+            "DESeq2 test to run. Use 'wald' for coefficient and contrast testing or "
+            "'lrt' for likelihood-ratio testing against a reduced model."
+        ),
+        "reduced_formula": (
+            "Reduced model formula used when test='lrt'. Leave empty for Wald tests."
+        ),
+        "min_total_count": "Filter out genes with total count below this threshold before DESeq2.",
+        "fit_type": "DESeq2 dispersion fit type.",
+        "alpha": "Adjusted p-value cutoff used by DESeq2 for significance summaries.",
+        "cooks_cutoff": "Use Cook's distance cutoff in DESeq2 result filtering.",
+        "independent_filtering": "Enable DESeq2 independent filtering.",
+    },
+    output_descriptions={
+        "expression_stats": (
+            "Tabular DESeq2 statistics per gene and extracted model effect including "
+            "effect size and significance metrics."
+        ),
+        "visualization": ("Differential expression results visualization."),
+    },
+    name="Estimate a multi-factor DESeq2 model and visualize the results.",
+    description=(
+        "Run DESeq2 using full sample metadata plus a fixed-effects formula and "
+        "return both the feature-level statistics artifact and a visualization."
     ),
     citations=[citations["Love-2014"]],
 )

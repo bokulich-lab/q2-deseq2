@@ -1,0 +1,8 @@
+sample-id	genotype	treatment
+#q2:types	categorical	categorical
+Sample1	KO	dmso
+Sample2	KO	dmso
+Sample3	nonKO	compoundA
+Sample4	nonKO	compoundA
+Sample5	KO	compoundA
+Sample6	nonKO	dmso

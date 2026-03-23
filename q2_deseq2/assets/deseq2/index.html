@@ -15,7 +15,7 @@
       <h3 class="report-title">DESeq2 differential abundance overview</h3>
       <p class="text-muted">
         Inspect interactive differential-abundance plots for
-        <code data-selected-comparison>{{ default_comparison }}</code>.
+        <code data-selected-effect>{{ default_effect_label }}</code>.
       </p>
     </div>
   </div>
@@ -26,8 +26,8 @@
     <div class="plot-toolbar">
       <div class="plot-toolbar-controls">
         <div class="toolbar-field comparison-field">
-          <label for="comparison-select">Comparison</label>
-          <select class="form-control input-sm" id="comparison-select"></select>
+          <label for="effect-select">Effect</label>
+          <select class="form-control input-sm" id="effect-select"></select>
         </div>
         <div class="toolbar-field">
           <label for="alpha-cutoff-input">adj. p-value</label>
@@ -97,7 +97,7 @@
         </div>
         <p class="text-muted">
           Inspect log2 fold change against significance for
-          <code data-selected-comparison>{{ default_comparison }}</code>.
+          <code data-selected-effect>{{ default_effect_label }}</code>.
         </p>
         <div id="volcano-view"></div>
         <div id="volcano-error" class="alert alert-danger" hidden></div>
@@ -123,7 +123,7 @@
         </div>
         <p class="text-muted">
           Inspect log2 fold change against mean normalized abundance for
-          <code data-selected-comparison>{{ default_comparison }}</code>.
+          <code data-selected-effect>{{ default_effect_label }}</code>.
         </p>
         <div id="ma-view"></div>
         <div id="ma-error" class="alert alert-danger" hidden></div>
@@ -145,11 +145,11 @@
 <script id="results_data_path" type="application/json">
 {{ results_data_path_json | safe }}
 </script>
-<script id="comparison_options" type="application/json">
-{{ comparison_options_json | safe }}
+<script id="effect_options" type="application/json">
+{{ effect_options_json | safe }}
 </script>
-<script id="default_comparison" type="application/json">
-{{ default_comparison_json | safe }}
+<script id="default_effect_id" type="application/json">
+{{ default_effect_id_json | safe }}
 </script>
 {% endblock %}
 

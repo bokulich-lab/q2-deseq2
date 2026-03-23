@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pandas as pd
-from pandas.testing import assert_frame_equal
 from qiime2.plugin.testing import TestPluginBase
 
 from q2_deseq2._run_data import DESeq2RunResult
@@ -63,11 +62,19 @@ class TestVisualizers(TestPluginBase):
         self.multi_results = pd.concat(
             [
                 self.raw_results.assign(
+                    effect_id="contrast::condition::other::control",
+                    effect_label="condition: other vs control",
+                    effect_kind="contrast",
+                    effect_expression='contrast=c("condition","other","control")',
                     comparison="other vs. control",
                     test_level="other",
                     reference_level="control",
                 ),
                 self.raw_results.assign(
+                    effect_id="contrast::condition::treated::control",
+                    effect_label="condition: treated vs control",
+                    effect_kind="contrast",
+                    effect_expression='contrast=c("condition","treated","control")',
                     comparison="treated vs. control",
                     test_level="treated",
                     reference_level="control",
@@ -78,11 +85,19 @@ class TestVisualizers(TestPluginBase):
         self.annotated_multi_results = pd.concat(
             [
                 self.annotated_results.assign(
+                    effect_id="contrast::condition::other::control",
+                    effect_label="condition: other vs control",
+                    effect_kind="contrast",
+                    effect_expression='contrast=c("condition","other","control")',
                     comparison="other vs. control",
                     test_level="other",
                     reference_level="control",
                 ),
                 self.annotated_results.assign(
+                    effect_id="contrast::condition::treated::control",
+                    effect_label="condition: treated vs control",
+                    effect_kind="contrast",
+                    effect_expression='contrast=c("condition","treated","control")',
                     comparison="treated vs. control",
                     test_level="treated",
                     reference_level="control",
@@ -103,6 +118,16 @@ class TestVisualizers(TestPluginBase):
             volcano_plot_png=b"volcano-plot",
             test_level="other",
             reference_level="control",
+            default_effect_id="contrast::condition::other::control",
+            fixed_effects_formula="condition",
+            reference_levels=("condition::control",),
+            test="wald",
+            reduced_formula="",
+            available_results_names=("Intercept", "condition_treated_vs_control"),
+            selected_effect_specs=(
+                "contrast::condition::other::control",
+                "contrast::condition::treated::control",
+            ),
         )
 
     def test_value_or_none_handles_missing_and_numeric_values(self):
@@ -192,20 +217,41 @@ class TestVisualizers(TestPluginBase):
         self.assertIsNone(observed[2]["log2FoldChange"])
         self.assertIsNone(observed[2]["gene_name"])
 
-    def test_ensure_comparison_columns_backfills_single_comparison_results(self):
-        observed = visualizers._ensure_comparison_columns(
+    def test_ensure_effect_columns_backfills_legacy_single_comparison_results(self):
+        observed, default_effect_id = visualizers._ensure_effect_columns(
             self.annotated_results,
+            default_effect_id="",
             default_test_level="treated",
             reference_level="control",
         )
 
         self.assertTrue(
-            {"comparison", "test_level", "reference_level"} <= set(observed.columns)
+            {
+                "effect_id",
+                "effect_label",
+                "effect_kind",
+                "effect_expression",
+                "comparison",
+                "test_level",
+                "reference_level",
+            }
+            <= set(observed.columns)
         )
-        self.assertEqual(observed["comparison"].nunique(), 1)
-        self.assertEqual(observed.loc[0, "comparison"], "treated vs. control")
-        self.assertEqual(observed.loc[0, "test_level"], "treated")
-        self.assertEqual(observed.loc[0, "reference_level"], "control")
+        self.assertEqual(observed["effect_id"].nunique(), 1)
+        self.assertEqual(observed.loc[0, "effect_label"], "treated vs. control")
+        self.assertEqual(observed.loc[0, "effect_kind"], "comparison")
+        self.assertEqual(default_effect_id, "legacy::treated::control")
+
+    def test_collect_effect_options_returns_default_label(self):
+        effect_options, default_effect_id, default_effect_label = (
+            visualizers._collect_effect_options(
+                self.multi_results, "contrast::condition::other::control"
+            )
+        )
+
+        self.assertEqual(default_effect_id, "contrast::condition::other::control")
+        self.assertEqual(default_effect_label, "condition: other vs control")
+        self.assertEqual(len(effect_options), 2)
 
     def test_summarize_results_counts_expected_categories(self):
         observed = visualizers._summarize_results(self.annotated_results, alpha=0.05)
@@ -279,17 +325,19 @@ class TestVisualizers(TestPluginBase):
                 {"title": "Results table", "url": "table.html"},
             ],
         )
-        self.assertEqual(captured["context"]["default_comparison"], "other vs. control")
+        self.assertEqual(
+            captured["context"]["default_effect_label"], "condition: other vs control"
+        )
         self.assertTrue(captured["context"]["include_annotated_results_file"])
         self.assertEqual(captured["context"]["summary"]["total_features"], 3)
         self.assertEqual(captured["context"]["summary"]["significant_features"], 1)
         self.assertEqual(captured["context"]["summary"]["annotated_features"], 3)
         self.assertEqual(
-            len(json.loads(captured["context"]["comparison_options_json"])), 2
+            len(json.loads(captured["context"]["effect_options_json"])), 2
         )
         self.assertEqual(report_payload["columns"][0], "feature_id")
         self.assertEqual(len(report_payload["data"]), 6)
-        self.assertIn("comparison", report_payload["columns"])
+        self.assertIn("effect_id", report_payload["columns"])
 
     @patch("q2_deseq2.visualizers._write_visualization_output")
     @patch("q2_deseq2.visualizers._parse_run_results")

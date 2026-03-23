@@ -6,10 +6,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   const volcanoSpecNode = document.getElementById("vega_volcano_spec");
   const maSpecNode = document.getElementById("vega_ma_spec");
   const resultsDataPathNode = document.getElementById("results_data_path");
-  const comparisonOptionsNode = document.getElementById("comparison_options");
-  const defaultComparisonNode = document.getElementById("default_comparison");
-  const comparisonSelect = document.getElementById("comparison-select");
-  const comparisonLabelNodes = document.querySelectorAll("[data-selected-comparison]");
+  const effectOptionsNode = document.getElementById("effect_options");
+  const defaultEffectIdNode = document.getElementById("default_effect_id");
+  const effectSelect = document.getElementById("effect-select");
+  const effectLabelNodes = document.querySelectorAll("[data-selected-effect]");
   const volcanoErrorNode = document.getElementById("volcano-error");
   const maErrorNode = document.getElementById("ma-error");
   const volcanoFallbackNode = document.getElementById("volcano-fallback");
@@ -24,13 +24,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (
     !volcanoContainer || !maContainer || !volcanoLayout || !maLayout
     || !volcanoSpecNode || !maSpecNode
-    || !resultsDataPathNode || !comparisonOptionsNode || !defaultComparisonNode
-    || !comparisonSelect || !alphaInput || !lfcInput
+    || !resultsDataPathNode || !effectOptionsNode || !defaultEffectIdNode
+    || !effectSelect || !alphaInput || !lfcInput
   ) {
     return;
   }
 
-  const comparisonPersistenceKey = "q2_deseq2_selected_comparison";
+  const effectPersistenceKey = "q2_deseq2_selected_effect";
+  const legacyComparisonPersistenceKey = "q2_deseq2_selected_comparison";
   const alphaPersistenceKey = "q2_deseq2_alpha_cutoff";
   const lfcPersistenceKey = "q2_deseq2_lfc_cutoff";
 
@@ -47,6 +48,27 @@ document.addEventListener("DOMContentLoaded", async () => {
       return "";
     }
     return `${testLevel} vs. ${referenceLevel}`;
+  };
+
+  const deriveLegacyEffectId = (record, fallbackLabel) => {
+    const testLevel = typeof record.test_level === "string" ? record.test_level.trim() : "";
+    const referenceLevel = typeof record.reference_level === "string" ? record.reference_level.trim() : "";
+    const comparison = typeof record.comparison === "string" ? record.comparison.trim() : "";
+    if (testLevel && referenceLevel) {
+      return `legacy::${testLevel}::${referenceLevel}`;
+    }
+    if (comparison) {
+      return `legacy::${comparison}`;
+    }
+    return `legacy::${fallbackLabel || "effect"}`;
+  };
+
+  const deriveLegacyEffectLabel = (record, fallbackLabel) => {
+    if (typeof record.comparison === "string" && record.comparison.trim() !== "") {
+      return record.comparison.trim();
+    }
+    const comparison = formatComparison(record.test_level, record.reference_level);
+    return comparison || fallbackLabel || "Effect";
   };
 
   const parseNumeric = (value) => {
@@ -108,19 +130,26 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
   };
 
-  const readPersistedComparison = (availableComparisons) => {
+  const readPersistedEffect = (availableEffectIds, effectOptions) => {
     try {
-      const persisted = window.localStorage.getItem(comparisonPersistenceKey);
-      if (persisted && availableComparisons.includes(persisted)) {
+      const persisted = window.localStorage.getItem(effectPersistenceKey);
+      if (persisted && availableEffectIds.includes(persisted)) {
         return persisted;
+      }
+      const legacyPersisted = window.localStorage.getItem(legacyComparisonPersistenceKey);
+      if (legacyPersisted) {
+        const matchingEffect = effectOptions.find((option) => option.effect_label === legacyPersisted);
+        if (matchingEffect) {
+          return matchingEffect.effect_id;
+        }
       }
     } catch {}
     return null;
   };
 
-  const persistComparison = (comparison) => {
+  const persistEffect = (effectId) => {
     try {
-      window.localStorage.setItem(comparisonPersistenceKey, comparison);
+      window.localStorage.setItem(effectPersistenceKey, effectId);
     } catch {}
   };
 
@@ -140,8 +169,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch {}
   };
 
-  const comparisonOptions = parseJsonNode(comparisonOptionsNode, []);
-  const configuredDefaultComparison = parseJsonNode(defaultComparisonNode, "");
+  const effectOptions = parseJsonNode(effectOptionsNode, []);
+  const configuredDefaultEffectId = parseJsonNode(defaultEffectIdNode, "");
   const resultsDataPath = parseJsonNode(resultsDataPathNode, "");
 
   const alphaBounds = readBounds(alphaInput, 0.05);
@@ -179,45 +208,48 @@ document.addEventListener("DOMContentLoaded", async () => {
       columns.forEach((name, index) => {
         record[name] = row[index];
       });
-      record.comparison = record.comparison
-        || formatComparison(record.test_level, record.reference_level)
-        || configuredDefaultComparison;
+      const fallbackLabel = deriveLegacyEffectLabel(record, "Effect");
+      record.effect_id = record.effect_id || deriveLegacyEffectId(record, fallbackLabel);
+      record.effect_label = record.effect_label || fallbackLabel;
       return record;
     });
 
-    const rowsByComparison = new Map();
-    const optionByComparison = new Map();
-    comparisonOptions.forEach((option) => {
-      optionByComparison.set(option.comparison, option);
-      rowsByComparison.set(option.comparison, []);
+    const rowsByEffect = new Map();
+    const labelByEffect = new Map();
+    effectOptions.forEach((option) => {
+      labelByEffect.set(option.effect_id, option.effect_label);
+      rowsByEffect.set(option.effect_id, []);
     });
     records.forEach((record) => {
-      if (!rowsByComparison.has(record.comparison)) {
-        rowsByComparison.set(record.comparison, []);
+      if (!rowsByEffect.has(record.effect_id)) {
+        rowsByEffect.set(record.effect_id, []);
       }
-      rowsByComparison.get(record.comparison).push(record);
+      if (!labelByEffect.has(record.effect_id)) {
+        labelByEffect.set(record.effect_id, record.effect_label);
+      }
+      rowsByEffect.get(record.effect_id).push(record);
     });
 
-    const availableComparisons = Array.from(rowsByComparison.keys()).filter(Boolean);
-    if (availableComparisons.length === 0) {
-      throw new Error("No comparisons were available in the DESeq2 results table.");
+    const availableEffectIds = Array.from(rowsByEffect.keys()).filter(Boolean);
+    if (availableEffectIds.length === 0) {
+      throw new Error("No effects were available in the DESeq2 results table.");
     }
 
-    availableComparisons.forEach((comparison) => {
+    availableEffectIds.forEach((effectId) => {
       const option = document.createElement("option");
-      option.value = comparison;
-      option.textContent = comparison;
-      comparisonSelect.append(option);
+      option.value = effectId;
+      option.textContent = labelByEffect.get(effectId) || effectId;
+      effectSelect.append(option);
     });
 
-    const initialComparison = readPersistedComparison(availableComparisons)
-      || (availableComparisons.includes(configuredDefaultComparison)
-        ? configuredDefaultComparison
-        : availableComparisons[0]);
-    comparisonSelect.value = initialComparison;
+    const initialEffectId = readPersistedEffect(availableEffectIds, effectOptions)
+      || (availableEffectIds.includes(configuredDefaultEffectId)
+        ? configuredDefaultEffectId
+        : availableEffectIds[0]);
+    effectSelect.value = initialEffectId;
 
-    const buildPlotData = (comparison) => {
-      return (rowsByComparison.get(comparison) || []).map((row) => ({
+    const buildPlotData = (effectId) => {
+      return (rowsByEffect.get(effectId) || []).map((row) => ({
         feature_id: row.feature_id == null ? "" : String(row.feature_id),
         gene_name: row.gene_name == null || row.gene_name === "" ? null : String(row.gene_name),
         product: row.product == null || row.product === "" ? null : String(row.product),
@@ -228,19 +260,20 @@ document.addEventListener("DOMContentLoaded", async () => {
       }));
     };
 
-    const setComparisonLabel = (comparison) => {
-      comparisonLabelNodes.forEach((node) => {
-        node.textContent = comparison;
+    const setEffectLabel = (effectId) => {
+      const label = labelByEffect.get(effectId) || effectId;
+      effectLabelNodes.forEach((node) => {
+        node.textContent = label;
       });
     };
 
     const volcanoSpec = JSON.parse(volcanoSpecNode.textContent);
     volcanoSpec.width = measureWidth(volcanoLayout);
-    volcanoSpec.data[0].values = buildPlotData(initialComparison);
+    volcanoSpec.data[0].values = buildPlotData(initialEffectId);
 
     const maSpec = JSON.parse(maSpecNode.textContent);
     maSpec.width = measureWidth(maLayout);
-    maSpec.data[0].values = buildPlotData(initialComparison);
+    maSpec.data[0].values = buildPlotData(initialEffectId);
 
     const [volcanoResult, maResult] = await Promise.all([
       vegaEmbed("#volcano-view", volcanoSpec, {
@@ -316,15 +349,20 @@ document.addEventListener("DOMContentLoaded", async () => {
       Promise.all(views.map(({ view }) => view.runAsync())).catch(() => {});
     };
 
-    const applyComparison = (comparison) => {
-      activePlotData = buildPlotData(comparison);
-      setComparisonLabel(comparison);
-      persistComparison(comparison);
+    const applyEffect = (effectId) => {
+      activePlotData = buildPlotData(effectId);
       views.forEach(({ view }) => {
-        view.signal("hoveredFeatureId", null);
-        view.signal("linkedHoveredFeatureId", null);
-        view.data("points", activePlotData);
+        view.change(
+          "results",
+          vega
+            .changeset()
+            .remove(() => true)
+            .insert(activePlotData),
+        );
       });
+      setEffectLabel(effectId);
+      effectSelect.value = effectId;
+      persistEffect(effectId);
       pushControlState();
     };
 
@@ -341,15 +379,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       commitControlState();
     };
 
+    effectSelect.addEventListener("change", () => {
+      applyEffect(effectSelect.value);
+    });
     alphaInput.addEventListener("input", commitControlInput);
     alphaInput.addEventListener("change", commitControlState);
     alphaInput.addEventListener("blur", commitControlState);
     lfcInput.addEventListener("input", commitControlInput);
     lfcInput.addEventListener("change", commitControlState);
     lfcInput.addEventListener("blur", commitControlState);
-    comparisonSelect.addEventListener("change", () => {
-      applyComparison(comparisonSelect.value);
-    });
     if (resetButton) {
       resetButton.addEventListener("click", () => {
         currentAlpha = clamp(alphaBounds.defaultValue, alphaBounds.min, alphaBounds.max);
@@ -358,54 +396,29 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
     }
 
-    applyComparison(initialComparison);
-
-    volcanoResult.view.addSignalListener("hoveredFeatureId", (_, value) => {
-      maResult.view.signal("linkedHoveredFeatureId", value).runAsync();
-    });
-    maResult.view.addSignalListener("hoveredFeatureId", (_, value) => {
-      volcanoResult.view.signal("linkedHoveredFeatureId", value).runAsync();
-    });
-
-    let resizeFrame = null;
     const resizePlots = () => {
-      if (resizeFrame !== null) {
-        window.cancelAnimationFrame(resizeFrame);
-      }
-      resizeFrame = window.requestAnimationFrame(() => {
-        resizeFrame = null;
-        let needsRun = false;
-        views.forEach((plot) => {
-          const nextWidth = measureWidth(plot.layout);
-          if (nextWidth !== plot.width) {
-            plot.width = nextWidth;
-            plot.view.width(nextWidth).resize();
-            needsRun = true;
-          }
-        });
-        if (needsRun) {
-          Promise.all(views.map(({ view }) => view.runAsync())).catch(() => {});
+      views.forEach((entry) => {
+        const width = measureWidth(entry.layout);
+        if (width !== entry.width) {
+          entry.width = width;
+          entry.view.width(width);
+          entry.view.runAsync().catch(() => {});
         }
       });
     };
-
     window.addEventListener("resize", resizePlots);
+
+    applyEffect(initialEffectId);
   } catch (error) {
     if (volcanoErrorNode) {
       volcanoErrorNode.hidden = false;
       volcanoErrorNode.textContent =
-        "Interactive volcano plot could not be rendered.\n\n" + String(error);
+        "The volcano plot could not be loaded.\n\n" + String(error);
     }
     if (maErrorNode) {
       maErrorNode.hidden = false;
       maErrorNode.textContent =
-        "Interactive MA plot could not be rendered.\n\n" + String(error);
-    }
-    if (volcanoFallbackNode) {
-      volcanoFallbackNode.hidden = false;
-    }
-    if (maFallbackNode) {
-      maFallbackNode.hidden = false;
+        "The MA plot could not be loaded.\n\n" + String(error);
     }
   }
 });

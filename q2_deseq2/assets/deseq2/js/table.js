@@ -1,9 +1,9 @@
 document.addEventListener("DOMContentLoaded", async () => {
   const dataPathNode = document.getElementById("results_data_path");
-  const comparisonOptionsNode = document.getElementById("comparison_options");
-  const defaultComparisonNode = document.getElementById("default_comparison");
-  const comparisonSelect = document.getElementById("results-comparison-select");
-  const comparisonLabelNode = document.getElementById("results-selected-comparison");
+  const effectOptionsNode = document.getElementById("effect_options");
+  const defaultEffectIdNode = document.getElementById("default_effect_id");
+  const effectSelect = document.getElementById("results-effect-select");
+  const effectLabelNode = document.getElementById("results-selected-effect");
   const alphaInput = document.getElementById("results-alpha-cutoff-input");
   const lfcInput = document.getElementById("results-lfc-cutoff-input");
   const resetButton = document.getElementById("results-filter-reset");
@@ -11,14 +11,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   const tableNode = document.getElementById("results-table");
 
   if (
-    !dataPathNode || !comparisonOptionsNode || !defaultComparisonNode
-    || !comparisonSelect || !comparisonLabelNode
+    !dataPathNode || !effectOptionsNode || !defaultEffectIdNode
+    || !effectSelect || !effectLabelNode
     || !alphaInput || !lfcInput || !tableNode
   ) {
     return;
   }
 
-  const comparisonPersistenceKey = "q2_deseq2_selected_comparison";
+  const effectPersistenceKey = "q2_deseq2_selected_effect";
+  const legacyComparisonPersistenceKey = "q2_deseq2_selected_comparison";
   const alphaPersistenceKey = "q2_deseq2_alpha_cutoff";
   const lfcPersistenceKey = "q2_deseq2_lfc_cutoff";
   let tableInstance = null;
@@ -54,6 +55,27 @@ document.addEventListener("DOMContentLoaded", async () => {
       return "";
     }
     return `${testLevel} vs. ${referenceLevel}`;
+  };
+
+  const deriveLegacyEffectId = (record, fallbackLabel) => {
+    const testLevel = typeof record.test_level === "string" ? record.test_level.trim() : "";
+    const referenceLevel = typeof record.reference_level === "string" ? record.reference_level.trim() : "";
+    const comparison = typeof record.comparison === "string" ? record.comparison.trim() : "";
+    if (testLevel && referenceLevel) {
+      return `legacy::${testLevel}::${referenceLevel}`;
+    }
+    if (comparison) {
+      return `legacy::${comparison}`;
+    }
+    return `legacy::${fallbackLabel || "effect"}`;
+  };
+
+  const deriveLegacyEffectLabel = (record, fallbackLabel) => {
+    if (typeof record.comparison === "string" && record.comparison.trim() !== "") {
+      return record.comparison.trim();
+    }
+    const comparison = formatComparison(record.test_level, record.reference_level);
+    return comparison || fallbackLabel || "Effect";
   };
 
   const formatScientific = (value) => {
@@ -116,19 +138,26 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   };
 
-  const readPersistedComparison = (availableComparisons) => {
+  const readPersistedEffect = (availableEffectIds, effectOptions) => {
     try {
-      const persisted = window.localStorage.getItem(comparisonPersistenceKey);
-      if (persisted && availableComparisons.includes(persisted)) {
+      const persisted = window.localStorage.getItem(effectPersistenceKey);
+      if (persisted && availableEffectIds.includes(persisted)) {
         return persisted;
+      }
+      const legacyPersisted = window.localStorage.getItem(legacyComparisonPersistenceKey);
+      if (legacyPersisted) {
+        const matchingEffect = effectOptions.find((option) => option.effect_label === legacyPersisted);
+        if (matchingEffect) {
+          return matchingEffect.effect_id;
+        }
       }
     } catch {}
     return null;
   };
 
-  const persistComparison = (comparison) => {
+  const persistEffect = (effectId) => {
     try {
-      window.localStorage.setItem(comparisonPersistenceKey, comparison);
+      window.localStorage.setItem(effectPersistenceKey, effectId);
     } catch {}
   };
 
@@ -170,8 +199,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   try {
     const dataPath = parseJsonNode(dataPathNode, "");
-    const configuredDefaultComparison = parseJsonNode(defaultComparisonNode, "");
-    const comparisonOptions = parseJsonNode(comparisonOptionsNode, []);
+    const configuredDefaultEffectId = parseJsonNode(defaultEffectIdNode, "");
+    const effectOptions = parseJsonNode(effectOptionsNode, []);
 
     const response = await fetch(dataPath);
     if (!response.ok) {
@@ -181,42 +210,66 @@ document.addEventListener("DOMContentLoaded", async () => {
     const payload = await response.json();
     const columns = payload.columns || [];
     const rows = payload.data || [];
+    const effectIdColumnIndex = columns.indexOf("effect_id");
+    const effectLabelColumnIndex = columns.indexOf("effect_label");
     const comparisonColumnIndex = columns.indexOf("comparison");
     const testLevelColumnIndex = columns.indexOf("test_level");
     const referenceLevelColumnIndex = columns.indexOf("reference_level");
     const padjColumnIndex = columns.indexOf("padj");
     const lfcColumnIndex = columns.indexOf("log2FoldChange");
-    const rowsByComparison = new Map();
+    const rowsByEffect = new Map();
+    const labelByEffect = new Map();
 
-    comparisonOptions.forEach((option) => {
-      rowsByComparison.set(option.comparison, []);
+    effectOptions.forEach((option) => {
+      rowsByEffect.set(option.effect_id, []);
+      labelByEffect.set(option.effect_id, option.effect_label);
     });
+
     rows.forEach((row) => {
-      const comparison = comparisonColumnIndex >= 0
-        ? row[comparisonColumnIndex]
-        : formatComparison(
-          testLevelColumnIndex >= 0 ? row[testLevelColumnIndex] : "",
-          referenceLevelColumnIndex >= 0 ? row[referenceLevelColumnIndex] : ""
-        ) || configuredDefaultComparison;
-      if (!rowsByComparison.has(comparison)) {
-        rowsByComparison.set(comparison, []);
+      const record = {};
+      columns.forEach((name, index) => {
+        record[name] = row[index];
+      });
+      const fallbackLabel = effectLabelColumnIndex >= 0 && row[effectLabelColumnIndex]
+        ? row[effectLabelColumnIndex]
+        : deriveLegacyEffectLabel(record, "Effect");
+      const effectId = effectIdColumnIndex >= 0 && row[effectIdColumnIndex]
+        ? row[effectIdColumnIndex]
+        : deriveLegacyEffectId(record, fallbackLabel);
+      const effectLabel = effectLabelColumnIndex >= 0 && row[effectLabelColumnIndex]
+        ? row[effectLabelColumnIndex]
+        : fallbackLabel;
+
+      if (!rowsByEffect.has(effectId)) {
+        rowsByEffect.set(effectId, []);
       }
-      rowsByComparison.get(comparison).push(row);
+      if (!labelByEffect.has(effectId)) {
+        labelByEffect.set(effectId, effectLabel);
+      }
+      rowsByEffect.get(effectId).push(row);
     });
 
-    const availableComparisons = Array.from(rowsByComparison.keys()).filter(Boolean);
-    if (availableComparisons.length === 0) {
-      throw new Error("No comparisons were available in the DESeq2 results table.");
+    const availableEffectIds = Array.from(rowsByEffect.keys()).filter(Boolean);
+    if (availableEffectIds.length === 0) {
+      throw new Error("No effects were available in the DESeq2 results table.");
     }
 
-    availableComparisons.forEach((comparison) => {
+    availableEffectIds.forEach((effectId) => {
       const option = document.createElement("option");
-      option.value = comparison;
-      option.textContent = comparison;
-      comparisonSelect.append(option);
+      option.value = effectId;
+      option.textContent = labelByEffect.get(effectId) || effectId;
+      effectSelect.append(option);
     });
 
-    const hiddenColumns = new Set(["comparison", "test_level", "reference_level"]);
+    const hiddenColumns = new Set([
+      "effect_id",
+      "effect_label",
+      "effect_kind",
+      "effect_expression",
+      "comparison",
+      "test_level",
+      "reference_level",
+    ]);
     const columnConfig = columns.map((name, columnIndex) => {
       const numericColumn = isNumericColumn(rows, columnIndex);
       const useFixedDecimal =
@@ -251,10 +304,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       };
     });
 
-    let currentComparison = readPersistedComparison(availableComparisons)
-      || (availableComparisons.includes(configuredDefaultComparison)
-        ? configuredDefaultComparison
-        : availableComparisons[0]);
+    let currentEffectId = readPersistedEffect(availableEffectIds, effectOptions)
+      || (availableEffectIds.includes(configuredDefaultEffectId)
+        ? configuredDefaultEffectId
+        : availableEffectIds[0]);
 
     const rowPassesFilters = (row) => {
       if (padjColumnIndex < 0 || lfcColumnIndex < 0) {
@@ -288,16 +341,16 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const applyFilters = () => {
       syncControlInputs();
-      persistComparison(currentComparison);
+      persistEffect(currentEffectId);
       persistNumeric(alphaPersistenceKey, currentAlpha);
       persistNumeric(lfcPersistenceKey, currentLfc);
 
-      const comparisonRows = rowsByComparison.get(currentComparison) || [];
-      const filteredRows = comparisonRows.filter(rowPassesFilters);
+      const effectRows = rowsByEffect.get(currentEffectId) || [];
+      const filteredRows = effectRows.filter(rowPassesFilters);
       renderRows(filteredRows);
 
-      comparisonLabelNode.textContent = currentComparison;
-      comparisonSelect.value = currentComparison;
+      effectLabelNode.textContent = labelByEffect.get(currentEffectId) || currentEffectId;
+      effectSelect.value = currentEffectId;
     };
 
     const commitControlState = () => {
@@ -313,8 +366,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       commitControlState();
     };
 
-    comparisonSelect.addEventListener("change", () => {
-      currentComparison = comparisonSelect.value;
+    effectSelect.addEventListener("change", () => {
+      currentEffectId = effectSelect.value;
       applyFilters();
     });
     alphaInput.addEventListener("input", commitControlInput);

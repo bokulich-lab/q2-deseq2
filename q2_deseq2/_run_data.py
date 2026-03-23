@@ -6,6 +6,8 @@
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
 from typing import NamedTuple
@@ -20,8 +22,55 @@ class DESeq2RunResult(NamedTuple):
     normalized_counts: pd.DataFrame
     ma_plot_png: bytes
     volcano_plot_png: bytes
-    test_level: str
-    reference_level: str
+    test_level: str = ""
+    reference_level: str = ""
+    default_effect_id: str = ""
+    fixed_effects_formula: str = ""
+    reference_levels: tuple[str, ...] = ()
+    test: str = "wald"
+    reduced_formula: str = ""
+    available_results_names: tuple[str, ...] = ()
+    selected_effect_specs: tuple[str, ...] = ()
+
+
+def _first_non_empty_string(value) -> str:
+    if value is None or pd.isna(value):
+        return ""
+    return str(value).strip()
+
+
+def _first_value_from_column(frame: pd.DataFrame, column_name: str) -> str:
+    if column_name not in frame.columns:
+        return ""
+    for value in frame[column_name]:
+        normalized = _first_non_empty_string(value)
+        if normalized:
+            return normalized
+    return ""
+
+
+def _unique_non_empty_values(values) -> tuple[str, ...]:
+    ordered_values = []
+    seen = set()
+    for value in values:
+        normalized = _first_non_empty_string(value)
+        if normalized and normalized not in seen:
+            ordered_values.append(normalized)
+            seen.add(normalized)
+    return tuple(ordered_values)
+
+
+def _resolve_default_effect_id(run_result: DESeq2RunResult) -> str:
+    if run_result.default_effect_id:
+        return run_result.default_effect_id
+    if "effect_id" in run_result.results.columns:
+        resolved = _first_value_from_column(run_result.results, "effect_id")
+        if resolved:
+            return resolved
+    comparison = _first_value_from_column(run_result.results, "comparison")
+    if comparison:
+        return f"legacy::{comparison}"
+    return ""
 
 
 def _write_run_result(path: Path, run_result: DESeq2RunResult, alpha: float) -> None:
@@ -38,6 +87,20 @@ def _write_run_result(path: Path, run_result: DESeq2RunResult, alpha: float) -> 
             {
                 "test_level": run_result.test_level,
                 "reference_level": run_result.reference_level,
+                "default_effect_id": _resolve_default_effect_id(run_result),
+                "fixed_effects_formula": run_result.fixed_effects_formula,
+                "reference_levels": list(run_result.reference_levels),
+                "test": run_result.test,
+                "reduced_formula": run_result.reduced_formula,
+                "available_results_names": list(run_result.available_results_names),
+                "selected_effect_specs": list(
+                    run_result.selected_effect_specs
+                    or _unique_non_empty_values(
+                        run_result.results["effect_id"]
+                        if "effect_id" in run_result.results.columns
+                        else ()
+                    )
+                ),
                 "alpha": alpha,
             },
             sort_keys=True,
@@ -60,16 +123,46 @@ def _parse_run_results(
     run_data_path = Path(str(run_data.path))
     metadata = json.loads((run_data_path / "metadata.json").read_text(encoding="utf-8"))
     alpha = float(metadata["alpha"])
+    results = pd.read_csv(run_data_path / "deseq2_results.tsv", sep="\t")
+
+    default_effect_id = _first_non_empty_string(metadata.get("default_effect_id"))
+    if not default_effect_id and "effect_id" in results.columns:
+        default_effect_id = _first_value_from_column(results, "effect_id")
+
+    test_level = _first_non_empty_string(metadata.get("test_level"))
+    if not test_level:
+        test_level = _first_value_from_column(results, "test_level")
+
+    reference_level = _first_non_empty_string(metadata.get("reference_level"))
+    if not reference_level:
+        reference_level = _first_value_from_column(results, "reference_level")
+
+    selected_effect_specs = metadata.get("selected_effect_specs") or ()
+    if not selected_effect_specs and "effect_id" in results.columns:
+        selected_effect_specs = _unique_non_empty_values(results["effect_id"])
 
     run_result = DESeq2RunResult(
-        results=pd.read_csv(run_data_path / "deseq2_results.tsv", sep="\t"),
+        results=results,
         normalized_counts=pd.read_csv(
             run_data_path / "normalized_counts.tsv", sep="\t"
         ),
         ma_plot_png=(run_data_path / "ma_plot.png").read_bytes(),
         volcano_plot_png=(run_data_path / "volcano_plot.png").read_bytes(),
-        test_level=str(metadata["test_level"]),
-        reference_level=str(metadata["reference_level"]),
+        test_level=test_level,
+        reference_level=reference_level,
+        default_effect_id=default_effect_id,
+        fixed_effects_formula=_first_non_empty_string(
+            metadata.get("fixed_effects_formula")
+        ),
+        reference_levels=tuple(
+            _unique_non_empty_values(metadata.get("reference_levels") or ())
+        ),
+        test=_first_non_empty_string(metadata.get("test")) or "wald",
+        reduced_formula=_first_non_empty_string(metadata.get("reduced_formula")),
+        available_results_names=tuple(
+            _unique_non_empty_values(metadata.get("available_results_names") or ())
+        ),
+        selected_effect_specs=tuple(_unique_non_empty_values(selected_effect_specs)),
     )
 
     return run_result, alpha

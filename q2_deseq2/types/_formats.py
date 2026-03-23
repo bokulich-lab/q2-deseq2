@@ -54,12 +54,19 @@ class DESeq2RunMetadataFormat(model.TextFileFormat):
             except json.JSONDecodeError as exc:
                 raise ValidationError("DESeq2 run metadata is not valid JSON.") from exc
 
-        required_fields = {"test_level", "reference_level", "alpha"}
-        missing = required_fields.difference(metadata)
+        missing = {"alpha"}.difference(metadata)
         if missing:
             missing_list = ", ".join(sorted(missing))
             raise ValidationError(
                 f"DESeq2 run metadata is missing required fields: {missing_list}."
+            )
+
+        has_legacy_effect_fields = {"test_level", "reference_level"} <= set(metadata)
+        has_model_effect_field = "default_effect_id" in metadata
+        if not has_legacy_effect_fields and not has_model_effect_field:
+            raise ValidationError(
+                "DESeq2 run metadata must include either legacy comparison fields "
+                '("test_level" and "reference_level") or "default_effect_id".'
             )
 
         try:
@@ -69,6 +76,9 @@ class DESeq2RunMetadataFormat(model.TextFileFormat):
 
         if not 0 < alpha < 1:
             raise ValidationError("DESeq2 run metadata alpha must be between 0 and 1.")
+
+        if "test" in metadata and metadata["test"] not in {"wald", "lrt", ""}:
+            raise ValidationError('DESeq2 run metadata test must be "wald" or "lrt".')
 
 
 class DESeq2ImageFormat(model.BinaryFileFormat):

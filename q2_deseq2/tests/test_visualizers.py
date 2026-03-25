@@ -111,6 +111,11 @@ class TestVisualizers(TestPluginBase):
                 {"feature_id": "GG_OTU_2", "Sample1": 50.0, "Sample2": 60.0},
             ]
         )
+        self.sample_distance_matrix = pd.DataFrame(
+            [[0.0, 1.75], [1.75, 0.0]],
+            index=["Sample1", "Sample2"],
+            columns=["Sample1", "Sample2"],
+        )
         self.run_result = DESeq2RunResult(
             results=self.multi_results,
             normalized_counts=self.normalized_counts,
@@ -128,6 +133,8 @@ class TestVisualizers(TestPluginBase):
                 "contrast::condition::other::control",
                 "contrast::condition::treated::control",
             ),
+            sample_distance_matrix=self.sample_distance_matrix,
+            sample_distance_order=("Sample2", "Sample1"),
         )
 
     def test_value_or_none_handles_missing_and_numeric_values(self):
@@ -274,6 +281,20 @@ class TestVisualizers(TestPluginBase):
         self.assertEqual(payload["data"][0][0], "GG_OTU_1")
         self.assertIsNone(payload["data"][2][2])
 
+    def test_prepare_sample_distance_payload_preserves_cluster_order(self):
+        payload = json.loads(
+            visualizers._prepare_sample_distance_payload(
+                self.sample_distance_matrix,
+                ("Sample2", "Sample1"),
+            )
+        )
+
+        self.assertEqual(payload[0]["sample_x"], "Sample2")
+        self.assertEqual(payload[0]["sample_y"], "Sample2")
+        self.assertEqual(payload[1]["sample_x"], "Sample1")
+        self.assertEqual(payload[1]["sample_y"], "Sample2")
+        self.assertEqual(payload[1]["distance"], 1.75)
+
     def test_write_visualization_output_renders_tabbed_report(self):
         captured = {}
 
@@ -297,14 +318,27 @@ class TestVisualizers(TestPluginBase):
             self.assertTrue((output_path / "deseq2_results.tsv").exists())
             self.assertTrue((output_path / "deseq2_results_annotated.tsv").exists())
             self.assertTrue((output_path / "normalized_counts.tsv").exists())
+            self.assertTrue((output_path / "sample_distances.tsv").exists())
+            self.assertTrue((output_path / "ma_plot.png").exists())
+            self.assertTrue((output_path / "volcano_plot.png").exists())
             self.assertTrue((output_path / "data" / "results_table.json").exists())
+            self.assertTrue((output_path / "data" / "sample_distances.json").exists())
             self.assertTrue((output_path / "css" / "styles.css").exists())
             self.assertTrue((output_path / "js" / "linked_plots.js").exists())
+            self.assertTrue((output_path / "js" / "sample_distances.js").exists())
             self.assertTrue((output_path / "vega" / "volcano.json").exists())
             self.assertTrue((output_path / "vega" / "ma.json").exists())
+            self.assertTrue(
+                (output_path / "vega" / "sample_distance_heatmap.json").exists()
+            )
 
             report_payload = json.loads(
                 (output_path / "data" / "results_table.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            sample_distance_payload = json.loads(
+                (output_path / "data" / "sample_distances.json").read_text(
                     encoding="utf-8"
                 )
             )
@@ -312,12 +346,13 @@ class TestVisualizers(TestPluginBase):
         self.assertEqual(captured["output_dir"], temp_dir)
         self.assertEqual(
             [Path(template).name for template in captured["templates"]],
-            ["index.html", "table.html"],
+            ["index.html", "sample_distances.html", "table.html"],
         )
         self.assertEqual(
             captured["context"]["tabs"],
             [
                 {"title": "Overview", "url": "index.html"},
+                {"title": "Sample distances", "url": "sample_distances.html"},
                 {"title": "Results table", "url": "table.html"},
             ],
         )
@@ -334,6 +369,52 @@ class TestVisualizers(TestPluginBase):
         self.assertEqual(report_payload["columns"][0], "feature_id")
         self.assertEqual(len(report_payload["data"]), 6)
         self.assertIn("effect_id", report_payload["columns"])
+        self.assertEqual(len(sample_distance_payload), 4)
+        self.assertEqual(
+            json.loads(captured["context"]["sample_distance_order_json"]),
+            ["Sample2", "Sample1"],
+        )
+        self.assertEqual(captured["context"]["sample_distance_sample_count"], 2)
+
+    def test_write_visualization_output_skips_sample_distance_tab_without_matrix(self):
+        captured = {}
+
+        def fake_render(templates, output_dir, context):
+            captured["templates"] = templates
+            captured["output_dir"] = output_dir
+            captured["context"] = context
+
+        run_result = self.run_result._replace(
+            sample_distance_matrix=None,
+            sample_distance_order=(),
+        )
+
+        with TemporaryDirectory() as temp_dir, patch.object(
+            visualizers, "q2templates", SimpleNamespace(render=fake_render)
+        ):
+            output_path = Path(temp_dir)
+            visualizers._write_visualization_output(
+                output_path,
+                run_result=run_result,
+                alpha=0.05,
+                display_results=self.annotated_multi_results,
+                include_annotated_results=True,
+            )
+
+            self.assertFalse((output_path / "sample_distances.tsv").exists())
+            self.assertFalse((output_path / "data" / "sample_distances.json").exists())
+
+        self.assertEqual(
+            [Path(template).name for template in captured["templates"]],
+            ["index.html", "table.html"],
+        )
+        self.assertEqual(
+            captured["context"]["tabs"],
+            [
+                {"title": "Overview", "url": "index.html"},
+                {"title": "Results table", "url": "table.html"},
+            ],
+        )
 
     @patch("q2_deseq2.visualizers._write_visualization_output")
     @patch("q2_deseq2.visualizers._parse_run_results")

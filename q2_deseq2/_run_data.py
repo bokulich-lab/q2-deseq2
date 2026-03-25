@@ -31,6 +31,8 @@ class DESeq2RunResult(NamedTuple):
     reduced_formula: str = ""
     available_results_names: tuple[str, ...] = ()
     selected_effect_specs: tuple[str, ...] = ()
+    sample_distance_matrix: pd.DataFrame | None = None
+    sample_distance_order: tuple[str, ...] = ()
 
 
 def _first_non_empty_string(value) -> str:
@@ -80,6 +82,17 @@ def _write_run_result(path: Path, run_result: DESeq2RunResult, alpha: float) -> 
     run_result.normalized_counts.to_csv(
         path / "normalized_counts.tsv", sep="\t", index=False
     )
+    if run_result.sample_distance_matrix is not None:
+        run_result.sample_distance_matrix.to_csv(
+            path / "sample_distances.tsv",
+            sep="\t",
+            index_label="sample_id",
+        )
+    if run_result.sample_distance_order:
+        (path / "sample_distance_order.txt").write_text(
+            "\n".join(run_result.sample_distance_order) + "\n",
+            encoding="utf-8",
+        )
     (path / "ma_plot.png").write_bytes(run_result.ma_plot_png)
     (path / "volcano_plot.png").write_bytes(run_result.volcano_plot_png)
     (path / "metadata.json").write_text(
@@ -141,6 +154,28 @@ def _parse_run_results(
     if not selected_effect_specs and "effect_id" in results.columns:
         selected_effect_specs = _unique_non_empty_values(results["effect_id"])
 
+    sample_distances_path = run_data_path / "sample_distances.tsv"
+    sample_distance_matrix = None
+    if sample_distances_path.exists():
+        sample_distance_matrix = pd.read_csv(
+            sample_distances_path, sep="\t", index_col=0
+        )
+        sample_distance_matrix.index = sample_distance_matrix.index.map(str)
+        sample_distance_matrix.columns = sample_distance_matrix.columns.map(str)
+        sample_distance_matrix.index.name = None
+        sample_distance_matrix.columns.name = None
+
+    sample_distance_order_path = run_data_path / "sample_distance_order.txt"
+    sample_distance_order = ()
+    if sample_distance_order_path.exists():
+        sample_distance_order = tuple(
+            _unique_non_empty_values(
+                sample_distance_order_path.read_text(encoding="utf-8").splitlines()
+            )
+        )
+    elif sample_distance_matrix is not None:
+        sample_distance_order = tuple(sample_distance_matrix.index.tolist())
+
     run_result = DESeq2RunResult(
         results=results,
         normalized_counts=pd.read_csv(
@@ -163,6 +198,8 @@ def _parse_run_results(
             _unique_non_empty_values(metadata.get("available_results_names") or ())
         ),
         selected_effect_specs=tuple(_unique_non_empty_values(selected_effect_specs)),
+        sample_distance_matrix=sample_distance_matrix,
+        sample_distance_order=sample_distance_order,
     )
 
     return run_result, alpha

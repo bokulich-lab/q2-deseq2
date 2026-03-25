@@ -1,0 +1,133 @@
+{
+  "$schema": "https://vega.github.io/schema/vega/v5.json",
+  "autosize": {
+    "type": "pad",
+    "contains": "padding"
+  },
+  "padding": {
+    "left": 140,
+    "right": 60,
+    "top": 10,
+    "bottom": 130
+  },
+  "width": 480,
+  "height": 480,
+  "data": [
+    {
+      "name": "cells",
+      "values": []
+    }
+  ],
+  "scales": [
+    {
+      "name": "x",
+      "type": "band",
+      "domain": [],
+      "range": "width",
+      "paddingInner": 0.02,
+      "paddingOuter": 0
+    },
+    {
+      "name": "y",
+      "type": "band",
+      "domain": [],
+      "range": "height",
+      "paddingInner": 0.02,
+      "paddingOuter": 0
+    },
+    {
+      "name": "color",
+      "type": "linear",
+      "domain": {
+        "data": "cells",
+        "field": "distance"
+      },
+      "range": {
+        "scheme": "blues"
+      },
+      "reverse": true,
+      "nice": true,
+      "zero": true
+    }
+  ],
+  "axes": [
+    {
+      "orient": "bottom",
+      "scale": "x",
+      "labelAngle": -50,
+      "labelAlign": "right",
+      "labelBaseline": "middle",
+      "labelLimit": 180,
+      "labelFontSize": 12,
+      "title": "Sample",
+      "titlePadding": 16
+    },
+    {
+      "orient": "left",
+      "scale": "y",
+      "labelLimit": 180,
+      "labelFontSize": 12,
+      "title": "Sample",
+      "titlePadding": 16
+    }
+  ],
+  "legends": [
+    {
+      "fill": "color",
+      "orient": "right",
+      "title": "Sample distance",
+      "gradientLength": 220
+    }
+  ],
+  "marks": [
+    {
+      "type": "rect",
+      "from": {
+        "data": "cells"
+      },
+      "encode": {
+        "enter": {
+          "tooltip": {
+            "signal": "{'Sample A': datum.sample_x, 'Sample B': datum.sample_y, 'Distance': datum.distance == null ? 'NA' : format(datum.distance, '.4f')}"
+          }
+        },
+        "update": {
+          "x": {
+            "scale": "x",
+            "field": "sample_x"
+          },
+          "y": {
+            "scale": "y",
+            "field": "sample_y"
+          },
+          "width": {
+            "scale": "x",
+            "band": 1
+          },
+          "height": {
+            "scale": "y",
+            "band": 1
+          },
+          "fill": {
+            "scale": "color",
+            "field": "distance"
+          },
+          "stroke": {
+            "value": "#f8fafc"
+          },
+          "strokeWidth": {
+            "value": 1
+          }
+        },
+        "hover": {
+          "stroke": {
+            "value": "#111827"
+          },
+          "strokeWidth": {
+            "value": 1.5
+          }
+        }
+      }
+    }
+  ]
+}

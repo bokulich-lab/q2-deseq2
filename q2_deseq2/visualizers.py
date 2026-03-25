@@ -325,6 +325,52 @@ def _prepare_table_payload(result_table: pd.DataFrame) -> str:
     return json.dumps({"columns": columns, "data": rows}).replace("NaN", "null")
 
 
+def _resolve_sample_distance_order(
+    sample_distance_matrix: pd.DataFrame, sample_distance_order: tuple[str, ...]
+) -> list[str]:
+    available_ids = [str(sample_id) for sample_id in sample_distance_matrix.index.tolist()]
+    ordered_ids = []
+    seen = set()
+    for sample_id in sample_distance_order:
+        normalized = str(sample_id).strip()
+        if normalized and normalized in available_ids and normalized not in seen:
+            ordered_ids.append(normalized)
+            seen.add(normalized)
+
+    for sample_id in available_ids:
+        if sample_id not in seen:
+            ordered_ids.append(sample_id)
+
+    return ordered_ids
+
+
+def _prepare_sample_distance_payload(
+    sample_distance_matrix: pd.DataFrame, sample_distance_order: tuple[str, ...]
+) -> str:
+    matrix = sample_distance_matrix.copy()
+    matrix.index = matrix.index.map(str)
+    matrix.columns = matrix.columns.map(str)
+    ordered_ids = _resolve_sample_distance_order(matrix, sample_distance_order)
+
+    records = []
+    for sample_y in ordered_ids:
+        if sample_y not in matrix.index:
+            continue
+        for sample_x in ordered_ids:
+            if sample_x not in matrix.columns:
+                continue
+            records.append(
+                {
+                    "sample_x": sample_x,
+                    "sample_y": sample_y,
+                    "distance": _value_or_none(matrix.at[sample_y, sample_x]),
+                    "is_diagonal": sample_x == sample_y,
+                }
+            )
+
+    return json.dumps(records).replace("NaN", "null")
+
+
 def _copy_report_assets(output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     for folder in ["css", "js", "vega"]:
@@ -341,6 +387,8 @@ def _render_report(
     reference_level: str,
     alpha: float,
     include_annotated_results_file: bool,
+    sample_distance_matrix: pd.DataFrame | None = None,
+    sample_distance_order: tuple[str, ...] = (),
 ) -> None:
     if q2templates is None:
         raise ImportError("q2templates is required to render the DESeq2 visualization.")
@@ -357,11 +405,28 @@ def _render_report(
     (data_dir / "results_table.json").write_text(
         _prepare_table_payload(report_results), encoding="utf-8"
     )
+    has_sample_distance_heatmap = (
+        sample_distance_matrix is not None and not sample_distance_matrix.empty
+    )
+    ordered_sample_ids = []
+    if has_sample_distance_heatmap:
+        ordered_sample_ids = _resolve_sample_distance_order(
+            sample_distance_matrix, sample_distance_order
+        )
+        (data_dir / "sample_distances.json").write_text(
+            _prepare_sample_distance_payload(
+                sample_distance_matrix, sample_distance_order
+            ),
+            encoding="utf-8",
+        )
 
     volcano_spec = _load_vega_spec("volcano")
     volcano_spec["signals"][0]["value"] = alpha
     ma_spec = _load_vega_spec("ma")
     ma_spec["signals"][0]["value"] = alpha
+    sample_distance_spec = None
+    if has_sample_distance_heatmap:
+        sample_distance_spec = _load_vega_spec("sample_distance_heatmap")
     effect_options, default_effect_id, default_effect_label = _collect_effect_options(
         report_results, default_effect_id
     )
@@ -375,13 +440,15 @@ def _render_report(
 
     templates = [
         str(_ASSETS_DIR / "index.html"),
-        str(_ASSETS_DIR / "table.html"),
     ]
+    tabs = [{"title": "Overview", "url": "index.html"}]
+    if has_sample_distance_heatmap:
+        templates.append(str(_ASSETS_DIR / "sample_distances.html"))
+        tabs.append({"title": "Sample distances", "url": "sample_distances.html"})
+    templates.append(str(_ASSETS_DIR / "table.html"))
+    tabs.append({"title": "Results table", "url": "table.html"})
     context = {
-        "tabs": [
-            {"title": "Overview", "url": "index.html"},
-            {"title": "Results table", "url": "table.html"},
-        ],
+        "tabs": tabs,
         "alpha": str(alpha),
         "summary": summary,
         "vega_volcano_spec": json.dumps(volcano_spec),
@@ -391,7 +458,15 @@ def _render_report(
         "default_effect_id_json": json.dumps(default_effect_id),
         "default_effect_label": default_effect_label,
         "include_annotated_results_file": include_annotated_results_file,
+        "has_sample_distance_heatmap": has_sample_distance_heatmap,
     }
+    if has_sample_distance_heatmap:
+        context["vega_sample_distance_spec"] = json.dumps(sample_distance_spec)
+        context["sample_distances_data_path_json"] = json.dumps(
+            "data/sample_distances.json"
+        )
+        context["sample_distance_order_json"] = json.dumps(ordered_sample_ids)
+        context["sample_distance_sample_count"] = len(ordered_sample_ids)
     q2templates.render(templates, str(output_dir), context=context)
 
 
@@ -413,6 +488,14 @@ def _write_visualization_output(
     run_result.normalized_counts.to_csv(
         output_path / "normalized_counts.tsv", sep="\t", index=False
     )
+    (output_path / "ma_plot.png").write_bytes(run_result.ma_plot_png)
+    (output_path / "volcano_plot.png").write_bytes(run_result.volcano_plot_png)
+    if run_result.sample_distance_matrix is not None:
+        run_result.sample_distance_matrix.to_csv(
+            output_path / "sample_distances.tsv",
+            sep="\t",
+            index_label="sample_id",
+        )
 
     _render_report(
         output_path,
@@ -422,6 +505,8 @@ def _write_visualization_output(
         reference_level=run_result.reference_level,
         alpha=alpha,
         include_annotated_results_file=include_annotated_results,
+        sample_distance_matrix=run_result.sample_distance_matrix,
+        sample_distance_order=run_result.sample_distance_order,
     )
 
 

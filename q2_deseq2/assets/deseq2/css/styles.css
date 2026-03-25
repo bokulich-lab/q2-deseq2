@@ -12,7 +12,8 @@
 }
 
 #volcano-view,
-#ma-view {
+#ma-view,
+#sample-distance-view {
   width: 100%;
   min-height: 520px;
 }
@@ -109,6 +110,22 @@
   display: grid;
   gap: 24px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sample-distance-shell {
+  background: #ffffff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 12px;
+}
+
+.heatmap-scroll {
+  overflow: auto;
+  width: 100%;
+}
+
+.sample-distance-notes {
+  margin-bottom: 16px;
 }
 
 .plot-column {

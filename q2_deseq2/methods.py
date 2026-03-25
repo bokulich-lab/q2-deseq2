@@ -420,6 +420,8 @@ def _write_r_script(script_fp: Path) -> None:
         coldata_path <- get_arg("--coldata")
         results_path <- get_arg("--results")
         norm_counts_path <- get_arg("--normalized-counts")
+        sample_distances_path <- get_arg("--sample-distances")
+        sample_distance_order_path <- get_arg("--sample-distance-order")
         summary_path <- get_arg("--summary")
         ma_plot_path <- get_arg("--ma-plot")
         volcano_plot_path <- get_arg("--volcano-plot")
@@ -694,6 +696,29 @@ def _write_r_script(script_fp: Path) -> None:
           row.names = FALSE
         )
 
+        vsd <- vst(dds, blind = FALSE, nsub = min(1000, nrow(dds)))
+        sample_dists <- dist(t(assay(vsd)))
+        sample_dist_matrix <- as.matrix(sample_dists)
+        sample_dist_df <- as.data.frame(sample_dist_matrix)
+        sample_dist_df$sample_id <- rownames(sample_dist_df)
+        sample_dist_df <- sample_dist_df[
+          ,
+          c("sample_id", setdiff(colnames(sample_dist_df), "sample_id"))
+        ]
+        write.table(
+          sample_dist_df,
+          file = sample_distances_path,
+          sep = "\\t",
+          quote = FALSE,
+          row.names = FALSE
+        )
+
+        sample_hclust <- hclust(sample_dists)
+        writeLines(
+          sample_hclust$labels[sample_hclust$order],
+          con = sample_distance_order_path
+        )
+
         if (length(summary_lines) == 0) {
           summary_lines <- "No effects were generated."
         }
@@ -797,6 +822,8 @@ def _run_deseq2_with_frames(
         coldata_fp = temp_path / "coldata.tsv"
         results_fp = temp_path / "deseq2_results.tsv"
         normalized_counts_fp = temp_path / "normalized_counts.tsv"
+        sample_distances_fp = temp_path / "sample_distances.tsv"
+        sample_distance_order_fp = temp_path / "sample_distance_order.txt"
         summary_fp = temp_path / "deseq2_summary.txt"
         ma_plot_fp = temp_path / "ma_plot.png"
         volcano_plot_fp = temp_path / "volcano_plot.png"
@@ -822,6 +849,10 @@ def _run_deseq2_with_frames(
             str(results_fp),
             "--normalized-counts",
             str(normalized_counts_fp),
+            "--sample-distances",
+            str(sample_distances_fp),
+            "--sample-distance-order",
+            str(sample_distance_order_fp),
             "--summary",
             str(summary_fp),
             "--ma-plot",
@@ -861,6 +892,8 @@ def _run_deseq2_with_frames(
         expected_outputs = {
             "deseq2_results.tsv": results_fp,
             "normalized_counts.tsv": normalized_counts_fp,
+            "sample_distances.tsv": sample_distances_fp,
+            "sample_distance_order.txt": sample_distance_order_fp,
             "ma_plot.png": ma_plot_fp,
             "volcano_plot.png": volcano_plot_fp,
             "results_names.txt": results_names_fp,
@@ -873,6 +906,16 @@ def _run_deseq2_with_frames(
 
         results_df = pd.read_csv(results_fp, sep="\t")
         normalized_counts_df = pd.read_csv(normalized_counts_fp, sep="\t")
+        sample_distance_matrix = pd.read_csv(
+            sample_distances_fp, sep="\t", index_col=0
+        )
+        sample_distance_matrix.index = sample_distance_matrix.index.map(str)
+        sample_distance_matrix.columns = sample_distance_matrix.columns.map(str)
+        sample_distance_matrix.index.name = None
+        sample_distance_matrix.columns.name = None
+        sample_distance_order = _unique_non_empty_values(
+            sample_distance_order_fp.read_text(encoding="utf-8").splitlines()
+        )
         available_results_names = _unique_non_empty_values(
             results_names_fp.read_text(encoding="utf-8").splitlines()
         )
@@ -896,6 +939,8 @@ def _run_deseq2_with_frames(
             reduced_formula=normalized_reduced_formula,
             available_results_names=available_results_names,
             selected_effect_specs=selected_effect_specs,
+            sample_distance_matrix=sample_distance_matrix,
+            sample_distance_order=sample_distance_order,
         )
 
 

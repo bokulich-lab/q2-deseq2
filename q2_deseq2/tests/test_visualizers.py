@@ -116,9 +116,18 @@ class TestVisualizers(TestPluginBase):
             index=["Sample1", "Sample2"],
             columns=["Sample1", "Sample2"],
         )
+        self.sample_metadata = pd.DataFrame(
+            {
+                "batch": ["A", "B"],
+                "condition": ["control", "treated"],
+                "depth": [11.0, 14.5],
+            },
+            index=["Sample1", "Sample2"],
+        )
         self.run_result = DESeq2RunResult(
             results=self.multi_results,
             normalized_counts=self.normalized_counts,
+            sample_metadata=self.sample_metadata,
             test_level="other",
             reference_level="control",
             default_effect_id="contrast::condition::other::control",
@@ -293,6 +302,24 @@ class TestVisualizers(TestPluginBase):
         self.assertEqual(payload[1]["sample_y"], "Sample2")
         self.assertEqual(payload[1]["distance"], 1.75)
 
+    def test_prepare_sample_annotation_payload_prioritizes_reference_columns(self):
+        payload = visualizers._prepare_sample_annotation_payload(
+            self.sample_metadata,
+            ["Sample2", "Sample1"],
+            ("condition::control",),
+        )
+
+        self.assertEqual(
+            [field["field"] for field in payload["fields"]],
+            ["condition", "batch"],
+        )
+        self.assertEqual(
+            payload["fields"][0]["label"], "condition (ref: control)"
+        )
+        self.assertEqual(payload["records"][0]["sample_id"], "Sample2")
+        self.assertEqual(payload["records"][0]["field"], "condition")
+        self.assertEqual(payload["records"][0]["value"], "treated")
+
     def test_write_visualization_output_renders_tabbed_report(self):
         captured = {}
 
@@ -317,10 +344,12 @@ class TestVisualizers(TestPluginBase):
             self.assertTrue((output_path / "deseq2_results_annotated.tsv").exists())
             self.assertTrue((output_path / "normalized_counts.tsv").exists())
             self.assertTrue((output_path / "sample_distances.tsv").exists())
+            self.assertTrue((output_path / "sample_metadata.tsv").exists())
             self.assertFalse((output_path / "ma_plot.png").exists())
             self.assertFalse((output_path / "volcano_plot.png").exists())
             self.assertTrue((output_path / "data" / "results_table.json").exists())
             self.assertTrue((output_path / "data" / "sample_distances.json").exists())
+            self.assertTrue((output_path / "data" / "sample_annotations.json").exists())
             self.assertTrue((output_path / "css" / "styles.css").exists())
             self.assertTrue((output_path / "js" / "linked_plots.js").exists())
             self.assertTrue((output_path / "js" / "sample_distances.js").exists())
@@ -337,6 +366,11 @@ class TestVisualizers(TestPluginBase):
             )
             sample_distance_payload = json.loads(
                 (output_path / "data" / "sample_distances.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            sample_annotation_payload = json.loads(
+                (output_path / "data" / "sample_annotations.json").read_text(
                     encoding="utf-8"
                 )
             )
@@ -364,10 +398,17 @@ class TestVisualizers(TestPluginBase):
         self.assertEqual(
             len(json.loads(captured["context"]["effect_options_json"])), 2
         )
+        self.assertTrue(captured["context"]["include_sample_metadata_file"])
+        self.assertTrue(captured["context"]["has_sample_annotations"])
+        self.assertEqual(captured["context"]["sample_annotation_field_count"], 2)
         self.assertEqual(report_payload["columns"][0], "feature_id")
         self.assertEqual(len(report_payload["data"]), 6)
         self.assertIn("effect_id", report_payload["columns"])
         self.assertEqual(len(sample_distance_payload), 4)
+        self.assertEqual(
+            [field["field"] for field in sample_annotation_payload["fields"]],
+            ["condition", "batch"],
+        )
         self.assertEqual(
             json.loads(captured["context"]["sample_distance_order_json"]),
             ["Sample2", "Sample1"],
@@ -400,7 +441,9 @@ class TestVisualizers(TestPluginBase):
             )
 
             self.assertFalse((output_path / "sample_distances.tsv").exists())
+            self.assertFalse((output_path / "sample_metadata.tsv").exists())
             self.assertFalse((output_path / "data" / "sample_distances.json").exists())
+            self.assertFalse((output_path / "data" / "sample_annotations.json").exists())
 
         self.assertEqual(
             [Path(template).name for template in captured["templates"]],

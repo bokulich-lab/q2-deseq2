@@ -121,10 +121,42 @@ class DESeq2DistanceOrderFormat(model.TextFileFormat):
             )
 
 
+class DESeq2SampleMetadataFormat(model.TextFileFormat):
+    def _validate_(self, level):
+        record_limit = None if level == "max" else 5
+
+        with self.open() as fh:
+            reader = csv.reader(fh, delimiter="\t")
+            try:
+                header = next(reader)
+            except StopIteration as exc:
+                raise ValidationError("DESeq2 sample metadata file is empty.") from exc
+
+            if not header or header[0] != "sample_id":
+                raise ValidationError(
+                    'DESeq2 sample metadata table must start with a "sample_id" header column.'
+                )
+
+            for line_no, row in enumerate(reader, start=2):
+                if record_limit is not None and line_no > (record_limit + 1):
+                    break
+
+                if not row:
+                    continue
+
+                if len(row) != len(header):
+                    raise ValidationError(
+                        f"Line {line_no} has {len(row)} fields, expected {len(header)}."
+                    )
+
+
 class DESeq2RunDirectoryFormat(model.DirectoryFormat):
     results = model.File("deseq2_results.tsv", format=DESeq2StatsFormat)
     normalized_counts = model.File("normalized_counts.tsv", format=DESeq2StatsFormat)
     metadata = model.File("metadata.json", format=DESeq2RunMetadataFormat)
+    sample_metadata = model.File(
+        "sample_metadata.tsv", format=DESeq2SampleMetadataFormat, optional=True
+    )
     sample_distances = model.File(
         "sample_distances.tsv", format=DESeq2DistanceMatrixFormat, optional=True
     )

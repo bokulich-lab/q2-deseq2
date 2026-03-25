@@ -871,10 +871,14 @@ def _run_deseq2_with_frames(
             results_df["effect_id"] if "effect_id" in results_df.columns else ()
         )
         default_effect_id = _first_value_from_column(results_df, "effect_id")
+        sample_metadata_df = coldata_df.copy()
+        sample_metadata_df.index = sample_metadata_df.index.map(str)
+        sample_metadata_df.columns = sample_metadata_df.columns.map(str)
 
         return DESeq2RunResult(
             results=results_df,
             normalized_counts=normalized_counts_df,
+            sample_metadata=sample_metadata_df,
             test_level=legacy_test_level or _first_value_from_column(results_df, "test_level"),
             reference_level=legacy_reference_level
             or _first_value_from_column(results_df, "reference_level"),

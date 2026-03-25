@@ -34,9 +34,18 @@
             <strong>Euclidean</strong>
             <span>distance</span>
           </span>
+          {% if has_sample_annotations %}
+          <span class="summary-chip">
+            <strong>{{ sample_annotation_field_count }}</strong>
+            <span>metadata tracks</span>
+          </span>
+          {% endif %}
         </div>
         <div class="results-actions">
           <a href="sample_distances.tsv" class="btn btn-default">Download sample distance TSV</a>
+          {% if include_sample_metadata_file %}
+          <a href="sample_metadata.tsv" class="btn btn-default">Download sample metadata TSV</a>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -44,8 +53,16 @@
     <div id="sample-distance-error" class="alert alert-danger" hidden></div>
     <div class="sample-distance-shell">
       <div class="heatmap-scroll">
-        <div id="sample-distance-view"></div>
+        <div class="sample-distance-layout">
+          <div id="sample-distance-annotation-labels" class="sample-distance-annotation-labels" hidden></div>
+          <div id="sample-distance-annotation-spacer" class="sample-distance-annotation-spacer" hidden></div>
+          <div id="sample-distance-top-annotations" class="sample-distance-top-annotations" hidden></div>
+          <div id="sample-distance-bottom-spacer" class="sample-distance-bottom-spacer" hidden></div>
+          <div id="sample-distance-left-annotations" class="sample-distance-left-annotations" hidden></div>
+          <div id="sample-distance-view"></div>
+        </div>
       </div>
+      <div id="sample-distance-annotation-legend" class="sample-distance-annotation-legend" hidden></div>
     </div>
   </div>
 </div>
@@ -55,6 +72,9 @@
 </script>
 <script id="sample_distances_data_path" type="application/json">
 {{ sample_distances_data_path_json | safe }}
+</script>
+<script id="sample_annotations_data_path" type="application/json">
+{{ sample_annotations_data_path_json | safe }}
 </script>
 <script id="sample_distance_order" type="application/json">
 {{ sample_distance_order_json | safe }}

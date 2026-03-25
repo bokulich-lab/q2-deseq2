@@ -11,6 +11,7 @@ from shutil import copytree
 from urllib.parse import unquote
 
 import pandas as pd
+from pandas.api.types import is_numeric_dtype
 from q2_types.genome_data import LociDirectoryFormat
 
 from q2_deseq2._run_data import DESeq2RunResult, _parse_run_results
@@ -371,6 +372,79 @@ def _prepare_sample_distance_payload(
     return json.dumps(records).replace("NaN", "null")
 
 
+def _reference_level_map(reference_levels: tuple[str, ...]) -> dict[str, str]:
+    mapping = {}
+    for raw_spec in reference_levels:
+        column, separator, level = str(raw_spec).strip().partition("::")
+        if separator == "::" and column and level and column not in mapping:
+            mapping[column] = level
+    return mapping
+
+
+def _prepare_sample_annotation_payload(
+    sample_metadata: pd.DataFrame | None,
+    ordered_sample_ids: list[str],
+    reference_levels: tuple[str, ...],
+) -> dict[str, list[dict[str, str | None]]]:
+    if sample_metadata is None or sample_metadata.empty:
+        return {"fields": [], "records": []}
+
+    metadata = sample_metadata.copy()
+    metadata.index = metadata.index.map(str)
+    metadata.columns = metadata.columns.map(str)
+    reference_map = _reference_level_map(reference_levels)
+
+    available_sample_ids = [sample_id for sample_id in ordered_sample_ids if sample_id in metadata.index]
+    if not available_sample_ids:
+        available_sample_ids = metadata.index.tolist()
+    metadata = metadata.loc[available_sample_ids]
+
+    candidate_columns = []
+    for column in metadata.columns:
+        series = metadata[column]
+        non_missing = series.dropna()
+        if non_missing.empty:
+            continue
+        if is_numeric_dtype(series) and column not in reference_map:
+            continue
+        candidate_columns.append(column)
+
+    ordered_columns = []
+    seen_columns = set()
+    for column in list(reference_map) + candidate_columns:
+        if column in candidate_columns and column not in seen_columns:
+            ordered_columns.append(column)
+            seen_columns.add(column)
+
+    fields = []
+    records = []
+    for column in ordered_columns:
+        reference_level = reference_map.get(column, "")
+        label = column if not reference_level else f"{column} (ref: {reference_level})"
+        fields.append(
+            {
+                "field": column,
+                "label": label,
+                "reference_level": reference_level,
+            }
+        )
+        for sample_id in available_sample_ids:
+            value = metadata.at[sample_id, column]
+            normalized_value = None
+            if not pd.isna(value):
+                text = str(value).strip()
+                normalized_value = text or None
+            records.append(
+                {
+                    "sample_id": sample_id,
+                    "field": column,
+                    "value": normalized_value,
+                }
+            )
+
+    return {"fields": fields, "records": records}
+
+
 def _copy_report_assets(output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     for folder in ["css", "js", "vega"]:
@@ -389,6 +463,8 @@ def _render_report(
     include_annotated_results_file: bool,
     sample_distance_matrix: pd.DataFrame | None = None,
     sample_distance_order: tuple[str, ...] = (),
+    sample_metadata: pd.DataFrame | None = None,
+    reference_levels: tuple[str, ...] = (),
 ) -> None:
     if q2templates is None:
         raise ImportError("q2templates is required to render the DESeq2 visualization.")
@@ -409,6 +485,7 @@ def _render_report(
         sample_distance_matrix is not None and not sample_distance_matrix.empty
     )
     ordered_sample_ids = []
+    sample_annotation_payload = {"fields": [], "records": []}
     if has_sample_distance_heatmap:
         ordered_sample_ids = _resolve_sample_distance_order(
             sample_distance_matrix, sample_distance_order
@@ -419,6 +496,16 @@ def _render_report(
             ),
             encoding="utf-8",
         )
+        sample_annotation_payload = _prepare_sample_annotation_payload(
+            sample_metadata=sample_metadata,
+            ordered_sample_ids=ordered_sample_ids,
+            reference_levels=reference_levels,
+        )
+        if sample_annotation_payload["fields"]:
+            (data_dir / "sample_annotations.json").write_text(
+                json.dumps(sample_annotation_payload).replace("NaN", "null"),
+                encoding="utf-8",
+            )
 
     volcano_spec = _load_vega_spec("volcano")
     volcano_spec["signals"][0]["value"] = alpha
@@ -459,14 +546,25 @@ def _render_report(
         "default_effect_label": default_effect_label,
         "include_annotated_results_file": include_annotated_results_file,
         "has_sample_distance_heatmap": has_sample_distance_heatmap,
+        "include_sample_metadata_file": sample_metadata is not None
+        and not sample_metadata.empty,
     }
     if has_sample_distance_heatmap:
         context["vega_sample_distance_spec"] = json.dumps(sample_distance_spec)
         context["sample_distances_data_path_json"] = json.dumps(
             "data/sample_distances.json"
         )
+        context["sample_annotations_data_path_json"] = json.dumps(
+            "data/sample_annotations.json"
+            if sample_annotation_payload["fields"]
+            else ""
+        )
         context["sample_distance_order_json"] = json.dumps(ordered_sample_ids)
         context["sample_distance_sample_count"] = len(ordered_sample_ids)
+        context["has_sample_annotations"] = bool(sample_annotation_payload["fields"])
+        context["sample_annotation_field_count"] = len(
+            sample_annotation_payload["fields"]
+        )
     q2templates.render(templates, str(output_dir), context=context)
 
 
@@ -494,6 +592,15 @@ def _write_visualization_output(
             sep="\t",
             index_label="sample_id",
         )
+        if run_result.sample_metadata is not None and not run_result.sample_metadata.empty:
+            sample_metadata = run_result.sample_metadata.copy()
+            sample_metadata.index = sample_metadata.index.map(str)
+            sample_metadata.columns = sample_metadata.columns.map(str)
+            sample_metadata.to_csv(
+                output_path / "sample_metadata.tsv",
+                sep="\t",
+                index_label="sample_id",
+            )
 
     _render_report(
         output_path,
@@ -505,6 +612,8 @@ def _write_visualization_output(
         include_annotated_results_file=include_annotated_results,
         sample_distance_matrix=run_result.sample_distance_matrix,
         sample_distance_order=run_result.sample_distance_order,
+        sample_metadata=run_result.sample_metadata,
+        reference_levels=run_result.reference_levels,
     )
 
 

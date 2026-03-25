@@ -74,6 +74,10 @@ class TestMethods(TestPluginBase):
             normalized_counts=pd.DataFrame(
                 [{"feature_id": "GG_OTU_2", "Sample1": 3.0, "Sample2": 4.0}]
             ),
+            sample_metadata=pd.DataFrame(
+                {"condition": ["control", "treated"]},
+                index=["Sample1", "Sample2"],
+            ),
             test_level="other",
             reference_level="control",
             default_effect_id="contrast::condition::other::control",
@@ -288,6 +292,7 @@ class TestMethods(TestPluginBase):
         expected_normalized_counts = self.sample_run_result.normalized_counts
         expected_sample_distances = self.sample_run_result.sample_distance_matrix
         expected_sample_distance_order = self.sample_run_result.sample_distance_order
+        captured = {}
 
         def _fake_run(cmd, check, capture_output, text):
             self.assertTrue(check)
@@ -310,6 +315,8 @@ class TestMethods(TestPluginBase):
 
             self.assertTrue(counts_fp.exists())
             self.assertTrue(coldata_fp.exists())
+            captured["sample_metadata"] = pd.read_csv(coldata_fp, sep="\t", index_col=0)
+            captured["sample_metadata"].index.name = None
             self.assertEqual(cmd[cmd.index("--fixed-effects-formula") + 1], "condition")
             self.assertEqual(
                 reference_levels_fp.read_text(encoding="utf-8"),
@@ -359,6 +366,8 @@ class TestMethods(TestPluginBase):
         self.assertIn("false", command)
         assert_frame_equal(observed.results, expected_results)
         assert_frame_equal(observed.normalized_counts, expected_normalized_counts)
+        captured["sample_metadata"].index.name = observed.sample_metadata.index.name
+        assert_frame_equal(observed.sample_metadata, captured["sample_metadata"])
         assert_frame_equal(observed.sample_distance_matrix, expected_sample_distances)
         self.assertEqual(observed.sample_distance_order, expected_sample_distance_order)
         self.assertEqual(
@@ -391,8 +400,10 @@ class TestMethods(TestPluginBase):
         expected_normalized_counts = self.sample_run_result.normalized_counts
         expected_sample_distances = self.sample_run_result.sample_distance_matrix
         expected_sample_distance_order = self.sample_run_result.sample_distance_order
+        captured = {}
 
         def _fake_run(cmd, check, capture_output, text):
+            coldata_fp = Path(cmd[cmd.index("--coldata") + 1])
             results_fp = Path(cmd[cmd.index("--results") + 1])
             normalized_counts_fp = Path(cmd[cmd.index("--normalized-counts") + 1])
             sample_distances_fp = Path(cmd[cmd.index("--sample-distances") + 1])
@@ -403,6 +414,8 @@ class TestMethods(TestPluginBase):
             results_names_fp = Path(cmd[cmd.index("--results-names") + 1])
             reference_levels_fp = Path(cmd[cmd.index("--reference-levels") + 1])
             effect_specs_fp = Path(cmd[cmd.index("--effect-specs") + 1])
+            captured["sample_metadata"] = pd.read_csv(coldata_fp, sep="\t", index_col=0)
+            captured["sample_metadata"].index.name = None
 
             self.assertEqual(
                 cmd[cmd.index("--fixed-effects-formula") + 1],
@@ -451,6 +464,8 @@ class TestMethods(TestPluginBase):
 
         assert_frame_equal(observed.results, expected_results)
         assert_frame_equal(observed.normalized_counts, expected_normalized_counts)
+        captured["sample_metadata"].index.name = observed.sample_metadata.index.name
+        assert_frame_equal(observed.sample_metadata, captured["sample_metadata"])
         assert_frame_equal(observed.sample_distance_matrix, expected_sample_distances)
         self.assertEqual(observed.sample_distance_order, expected_sample_distance_order)
         self.assertEqual(

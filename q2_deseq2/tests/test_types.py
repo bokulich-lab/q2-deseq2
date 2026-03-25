@@ -127,6 +127,12 @@ class TestFormats(TestPluginBase):
         with TemporaryDirectory() as temp_dir:
             workdir = Path(temp_dir) / "deseq2-run-valid"
             shutil.copytree(source, workdir)
+            (workdir / "sample_metadata.tsv").write_text(
+                "sample_id\tcondition\tbatch\n"
+                "Sample1\tcontrol\tA\n"
+                "Sample2\ttreated\tB\n",
+                encoding="utf-8",
+            )
             (workdir / "sample_distances.tsv").write_text(
                 "sample_id\tSample1\tSample2\n"
                 "Sample1\t0.0\t1.5\n"
@@ -152,6 +158,22 @@ class TestFormats(TestPluginBase):
             format = DESeq2RunDirectoryFormat(str(workdir), mode="r")
 
             with self.assertRaisesRegex(ValidationError, "Unrecognized file"):
+                format.validate()
+
+    def test_deseq2_run_directory_format_rejects_invalid_sample_metadata(self):
+        source = Path(self.get_data_path("deseq2-run-valid"))
+
+        with TemporaryDirectory() as temp_dir:
+            workdir = Path(temp_dir) / "deseq2-run-valid"
+            shutil.copytree(source, workdir)
+            (workdir / "sample_metadata.tsv").write_text(
+                "condition\tbatch\ncontrol\tA\n",
+                encoding="utf-8",
+            )
+
+            format = DESeq2RunDirectoryFormat(str(workdir), mode="r")
+
+            with self.assertRaisesRegex(ValidationError, 'start with a "sample_id"'):
                 format.validate()
 
     def test_deseq2_run_directory_format_rejects_invalid_metadata(self):

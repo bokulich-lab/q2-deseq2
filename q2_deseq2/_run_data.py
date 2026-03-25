@@ -20,6 +20,7 @@ from q2_deseq2.types import DESeq2RunDirectoryFormat
 class DESeq2RunResult(NamedTuple):
     results: pd.DataFrame
     normalized_counts: pd.DataFrame
+    sample_metadata: pd.DataFrame | None = None
     test_level: str = ""
     reference_level: str = ""
     default_effect_id: str = ""
@@ -80,6 +81,15 @@ def _write_run_result(path: Path, run_result: DESeq2RunResult, alpha: float) -> 
     run_result.normalized_counts.to_csv(
         path / "normalized_counts.tsv", sep="\t", index=False
     )
+    if run_result.sample_metadata is not None and not run_result.sample_metadata.empty:
+        sample_metadata = run_result.sample_metadata.copy()
+        sample_metadata.index = sample_metadata.index.map(str)
+        sample_metadata.columns = sample_metadata.columns.map(str)
+        sample_metadata.to_csv(
+            path / "sample_metadata.tsv",
+            sep="\t",
+            index_label="sample_id",
+        )
     if run_result.sample_distance_matrix is not None:
         run_result.sample_distance_matrix.to_csv(
             path / "sample_distances.tsv",
@@ -172,11 +182,20 @@ def _parse_run_results(
     elif sample_distance_matrix is not None:
         sample_distance_order = tuple(sample_distance_matrix.index.tolist())
 
+    sample_metadata_path = run_data_path / "sample_metadata.tsv"
+    sample_metadata = None
+    if sample_metadata_path.exists():
+        sample_metadata = pd.read_csv(sample_metadata_path, sep="\t", index_col=0)
+        sample_metadata.index = sample_metadata.index.map(str)
+        sample_metadata.columns = sample_metadata.columns.map(str)
+        sample_metadata.index.name = None
+
     run_result = DESeq2RunResult(
         results=results,
         normalized_counts=pd.read_csv(
             run_data_path / "normalized_counts.tsv", sep="\t"
         ),
+        sample_metadata=sample_metadata,
         test_level=test_level,
         reference_level=reference_level,
         default_effect_id=default_effect_id,

@@ -81,15 +81,7 @@ class DESeq2RunMetadataFormat(model.TextFileFormat):
             raise ValidationError('DESeq2 run metadata test must be "wald" or "lrt".')
 
 
-class DESeq2ImageFormat(model.BinaryFileFormat):
-    PNG_HEADER = b"\x89PNG\r\n\x1a\n"
-
-    def _validate_(self, level): ...
-
-
 class DESeq2RunDirectoryFormat(model.DirectoryFormat):
     results = model.File("deseq2_results.tsv", format=DESeq2StatsFormat)
     normalized_counts = model.File("normalized_counts.tsv", format=DESeq2StatsFormat)
-    ma_plot = model.File("ma_plot.png", format=DESeq2ImageFormat)
-    volcano_plot = model.File("volcano_plot.png", format=DESeq2ImageFormat)
     metadata = model.File("metadata.json", format=DESeq2RunMetadataFormat)

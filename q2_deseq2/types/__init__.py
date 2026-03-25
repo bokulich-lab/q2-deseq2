@@ -11,7 +11,6 @@ from ._formats import (
     DESeq2RunDirectoryFormat,
     DESeq2StatsDirectoryFormat,
     DESeq2RunMetadataFormat,
-    DESeq2ImageFormat,
 )
 from ._types import DESeq2Run, DESeq2Stats
 
@@ -25,7 +24,6 @@ __all__ = [
     "DESeq2Stats",
     "DESeq2StatsFormat",
     "DESeq2RunDirectoryFormat",
-    "DESeq2ImageFormat",
     "DESeq2RunMetadataFormat",
     "DESeq2StatsDirectoryFormat",
 ]

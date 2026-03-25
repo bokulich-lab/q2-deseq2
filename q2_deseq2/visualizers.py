@@ -11,6 +11,7 @@ from shutil import copytree
 from urllib.parse import unquote
 
 import pandas as pd
+from pandas.api.types import is_numeric_dtype
 from q2_types.genome_data import LociDirectoryFormat
 
 from q2_deseq2._run_data import DESeq2RunResult, _parse_run_results
@@ -325,6 +326,293 @@ def _prepare_table_payload(result_table: pd.DataFrame) -> str:
     return json.dumps({"columns": columns, "data": rows}).replace("NaN", "null")
 
 
+def _resolve_sample_distance_order(
+    sample_distance_matrix: pd.DataFrame, sample_distance_order: tuple[str, ...]
+) -> list[str]:
+    available_ids = [str(sample_id) for sample_id in sample_distance_matrix.index.tolist()]
+    ordered_ids = []
+    seen = set()
+    for sample_id in sample_distance_order:
+        normalized = str(sample_id).strip()
+        if normalized and normalized in available_ids and normalized not in seen:
+            ordered_ids.append(normalized)
+            seen.add(normalized)
+
+    for sample_id in available_ids:
+        if sample_id not in seen:
+            ordered_ids.append(sample_id)
+
+    return ordered_ids
+
+
+def _prepare_sample_distance_payload(
+    sample_distance_matrix: pd.DataFrame,
+    sample_distance_order: tuple[str, ...],
+    sample_metadata: pd.DataFrame | None = None,
+    reference_levels: tuple[str, ...] = (),
+) -> str:
+    matrix = sample_distance_matrix.copy()
+    matrix.index = matrix.index.map(str)
+    matrix.columns = matrix.columns.map(str)
+    ordered_ids = _resolve_sample_distance_order(matrix, sample_distance_order)
+    sample_labels, sample_metadata_text = _build_sample_label_map(
+        sample_metadata=sample_metadata,
+        ordered_sample_ids=ordered_ids,
+        reference_levels=reference_levels,
+    )
+
+    records = []
+    for sample_y in ordered_ids:
+        if sample_y not in matrix.index:
+            continue
+        for sample_x in ordered_ids:
+            if sample_x not in matrix.columns:
+                continue
+            records.append(
+                {
+                    "sample_x": sample_x,
+                    "sample_y": sample_y,
+                    "sample_y_label": sample_labels.get(sample_y, sample_y),
+                    "distance": _value_or_none(matrix.at[sample_y, sample_x]),
+                    "is_diagonal": sample_x == sample_y,
+                    "sample_x_metadata": sample_metadata_text.get(sample_x, ""),
+                    "sample_y_metadata": sample_metadata_text.get(sample_y, ""),
+                }
+            )
+
+    return json.dumps(records).replace("NaN", "null")
+
+
+def _reference_level_map(reference_levels: tuple[str, ...]) -> dict[str, str]:
+    mapping = {}
+    for raw_spec in reference_levels:
+        column, separator, level = str(raw_spec).strip().partition("::")
+        if separator == "::" and column and level and column not in mapping:
+            mapping[column] = level
+    return mapping
+
+
+def _prepare_sample_metadata_frame(
+    sample_metadata: pd.DataFrame | None, ordered_sample_ids: list[str]
+) -> pd.DataFrame | None:
+    if sample_metadata is None or sample_metadata.empty:
+        return None
+
+    metadata = sample_metadata.copy()
+    metadata.index = metadata.index.map(str)
+    metadata.columns = metadata.columns.map(str)
+
+    available_sample_ids = [
+        sample_id for sample_id in ordered_sample_ids if sample_id in metadata.index
+    ]
+    if not available_sample_ids:
+        available_sample_ids = metadata.index.tolist()
+
+    metadata = metadata.loc[available_sample_ids]
+    return metadata
+
+
+def _ordered_sample_metadata_columns(
+    sample_metadata: pd.DataFrame | None, reference_levels: tuple[str, ...]
+) -> list[str]:
+    if sample_metadata is None or sample_metadata.empty:
+        return []
+
+    reference_map = _reference_level_map(reference_levels)
+    candidate_columns = []
+    for column in sample_metadata.columns:
+        series = sample_metadata[column]
+        non_missing = series.dropna()
+        if non_missing.empty:
+            continue
+        if is_numeric_dtype(series) and column not in reference_map:
+            continue
+        candidate_columns.append(column)
+
+    ordered_columns = []
+    seen_columns = set()
+    for column in list(reference_map) + candidate_columns:
+        if column in candidate_columns and column not in seen_columns:
+            ordered_columns.append(column)
+            seen_columns.add(column)
+
+    return ordered_columns
+
+
+def _format_metadata_column_label(column: str, reference_levels: tuple[str, ...]) -> str:
+    reference_level = _reference_level_map(reference_levels).get(column)
+    if reference_level:
+        return f"{column} (ref: {reference_level})"
+    return column
+
+
+def _build_sample_label_map(
+    sample_metadata: pd.DataFrame | None,
+    ordered_sample_ids: list[str],
+    reference_levels: tuple[str, ...],
+) -> tuple[dict[str, str], dict[str, str]]:
+    metadata = _prepare_sample_metadata_frame(sample_metadata, ordered_sample_ids)
+    if metadata is None or metadata.empty:
+        return {}, {}
+
+    available_sample_ids = metadata.index.tolist()
+    ordered_columns = _ordered_sample_metadata_columns(metadata, reference_levels)
+
+    sample_labels = {}
+    sample_metadata_text = {}
+    for sample_id in available_sample_ids:
+        parts = []
+        for column in ordered_columns:
+            value = metadata.at[sample_id, column]
+            if pd.isna(value):
+                continue
+            text = str(value).strip()
+            if not text:
+                continue
+            parts.append(f"{column}={text}")
+
+        sample_metadata_text[sample_id] = "; ".join(parts)
+        sample_labels[sample_id] = (
+            sample_id if not parts else f"{sample_id} | " + " | ".join(parts)
+        )
+
+    return sample_labels, sample_metadata_text
+
+
+def _prepare_sample_pca_payload(
+    sample_pca_scores: pd.DataFrame,
+    sample_pca_percent_variance: tuple[float, float] = (),
+    sample_distance_order: tuple[str, ...] = (),
+    sample_metadata: pd.DataFrame | None = None,
+    reference_levels: tuple[str, ...] = (),
+) -> str:
+    scores = sample_pca_scores.copy()
+    scores.index = scores.index.map(str)
+    scores.columns = scores.columns.map(str)
+
+    ordered_ids = []
+    seen = set()
+    for sample_id in sample_distance_order:
+        normalized = str(sample_id).strip()
+        if normalized and normalized in scores.index and normalized not in seen:
+            ordered_ids.append(normalized)
+            seen.add(normalized)
+    for sample_id in scores.index.tolist():
+        if sample_id not in seen:
+            ordered_ids.append(sample_id)
+
+    metadata = _prepare_sample_metadata_frame(sample_metadata, ordered_ids)
+    ordered_columns = _ordered_sample_metadata_columns(metadata, reference_levels)
+    group_field = ordered_columns[0] if ordered_columns else ""
+    group_label = (
+        _format_metadata_column_label(group_field, reference_levels)
+        if group_field
+        else ""
+    )
+    sample_labels, sample_metadata_text = _build_sample_label_map(
+        sample_metadata=metadata,
+        ordered_sample_ids=ordered_ids,
+        reference_levels=reference_levels,
+    )
+
+    points = []
+    for sample_id in ordered_ids:
+        if sample_id not in scores.index:
+            continue
+
+        pc1 = _value_or_none(scores.at[sample_id, "PC1"])
+        pc2 = _value_or_none(scores.at[sample_id, "PC2"])
+        if pc1 is None or pc2 is None:
+            continue
+
+        group_value = ""
+        if metadata is not None and group_field and sample_id in metadata.index:
+            raw_group_value = metadata.at[sample_id, group_field]
+            if not pd.isna(raw_group_value):
+                group_value = str(raw_group_value).strip()
+
+        points.append(
+            {
+                "sample_id": sample_id,
+                "sample_label": sample_labels.get(sample_id, sample_id),
+                "sample_metadata": sample_metadata_text.get(sample_id, ""),
+                "group_value": group_value or "Samples",
+                "PC1": pc1,
+                "PC2": pc2,
+            }
+        )
+
+    percent_pc1 = (
+        float(sample_pca_percent_variance[0])
+        if len(sample_pca_percent_variance) >= 1
+        else 0.0
+    )
+    percent_pc2 = (
+        float(sample_pca_percent_variance[1])
+        if len(sample_pca_percent_variance) >= 2
+        else 0.0
+    )
+
+    payload = {
+        "points": points,
+        "group_field": group_field,
+        "group_label": group_label,
+        "percent_variance": {
+            "PC1": percent_pc1,
+            "PC2": percent_pc2,
+        },
+    }
+    return json.dumps(payload).replace("NaN", "null")
+
+
+def _prepare_count_matrix_heatmap_payload(
+    count_matrix_heatmap: pd.DataFrame,
+    sample_metadata: pd.DataFrame | None = None,
+    reference_levels: tuple[str, ...] = (),
+) -> str:
+    matrix = count_matrix_heatmap.copy()
+    matrix.index = matrix.index.map(str)
+    matrix.columns = matrix.columns.map(str)
+    ordered_sample_ids = [str(sample_id) for sample_id in matrix.columns.tolist()]
+    sample_labels, sample_metadata_text = _build_sample_label_map(
+        sample_metadata=sample_metadata,
+        ordered_sample_ids=ordered_sample_ids,
+        reference_levels=reference_levels,
+    )
+
+    records = []
+    for feature_id in matrix.index.tolist():
+        for sample_id in ordered_sample_ids:
+            if sample_id not in matrix.columns:
+                continue
+            records.append(
+                {
+                    "feature_id": feature_id,
+                    "sample_id": sample_id,
+                    "sample_label": sample_labels.get(sample_id, sample_id),
+                    "sample_metadata": sample_metadata_text.get(sample_id, ""),
+                    "value": _value_or_none(matrix.at[feature_id, sample_id]),
+                }
+            )
+
+    samples = [
+        {
+            "sample_id": sample_id,
+            "sample_label": sample_labels.get(sample_id, sample_id),
+            "sample_metadata": sample_metadata_text.get(sample_id, ""),
+        }
+        for sample_id in ordered_sample_ids
+    ]
+
+    payload = {
+        "cells": records,
+        "feature_order": matrix.index.tolist(),
+        "sample_order": ordered_sample_ids,
+        "samples": samples,
+    }
+    return json.dumps(payload).replace("NaN", "null")
+
+
 def _copy_report_assets(output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     for folder in ["css", "js", "vega"]:
@@ -341,6 +629,13 @@ def _render_report(
     reference_level: str,
     alpha: float,
     include_annotated_results_file: bool,
+    sample_distance_matrix: pd.DataFrame | None = None,
+    sample_distance_order: tuple[str, ...] = (),
+    sample_metadata: pd.DataFrame | None = None,
+    reference_levels: tuple[str, ...] = (),
+    sample_pca_scores: pd.DataFrame | None = None,
+    sample_pca_percent_variance: tuple[float, float] = (),
+    count_matrix_heatmap: pd.DataFrame | None = None,
 ) -> None:
     if q2templates is None:
         raise ImportError("q2templates is required to render the DESeq2 visualization.")
@@ -357,11 +652,61 @@ def _render_report(
     (data_dir / "results_table.json").write_text(
         _prepare_table_payload(report_results), encoding="utf-8"
     )
+    has_sample_distance_heatmap = (
+        sample_distance_matrix is not None and not sample_distance_matrix.empty
+    )
+    has_sample_pca_plot = sample_pca_scores is not None and not sample_pca_scores.empty
+    has_count_matrix_heatmap = (
+        count_matrix_heatmap is not None and not count_matrix_heatmap.empty
+    )
+    ordered_sample_ids = []
+    if has_sample_distance_heatmap:
+        ordered_sample_ids = _resolve_sample_distance_order(
+            sample_distance_matrix, sample_distance_order
+        )
+        (data_dir / "sample_distances.json").write_text(
+            _prepare_sample_distance_payload(
+                sample_distance_matrix,
+                sample_distance_order,
+                sample_metadata=sample_metadata,
+                reference_levels=reference_levels,
+            ),
+            encoding="utf-8",
+        )
+    if has_sample_pca_plot:
+        (data_dir / "sample_pca.json").write_text(
+            _prepare_sample_pca_payload(
+                sample_pca_scores,
+                sample_pca_percent_variance=sample_pca_percent_variance,
+                sample_distance_order=sample_distance_order,
+                sample_metadata=sample_metadata,
+                reference_levels=reference_levels,
+            ),
+            encoding="utf-8",
+        )
+    if has_count_matrix_heatmap:
+        (data_dir / "count_matrix_heatmap.json").write_text(
+            _prepare_count_matrix_heatmap_payload(
+                count_matrix_heatmap,
+                sample_metadata=sample_metadata,
+                reference_levels=reference_levels,
+            ),
+            encoding="utf-8",
+        )
 
     volcano_spec = _load_vega_spec("volcano")
     volcano_spec["signals"][0]["value"] = alpha
     ma_spec = _load_vega_spec("ma")
     ma_spec["signals"][0]["value"] = alpha
+    sample_distance_spec = None
+    if has_sample_distance_heatmap:
+        sample_distance_spec = _load_vega_spec("sample_distance_heatmap")
+    sample_pca_spec = None
+    if has_sample_pca_plot:
+        sample_pca_spec = _load_vega_spec("sample_pca")
+    count_matrix_heatmap_spec = None
+    if has_count_matrix_heatmap:
+        count_matrix_heatmap_spec = _load_vega_spec("count_matrix_heatmap")
     effect_options, default_effect_id, default_effect_label = _collect_effect_options(
         report_results, default_effect_id
     )
@@ -375,13 +720,15 @@ def _render_report(
 
     templates = [
         str(_ASSETS_DIR / "index.html"),
-        str(_ASSETS_DIR / "table.html"),
     ]
+    tabs = [{"title": "Overview", "url": "index.html"}]
+    if has_sample_distance_heatmap:
+        templates.append(str(_ASSETS_DIR / "sample_distances.html"))
+        tabs.append({"title": "Sample distances", "url": "sample_distances.html"})
+    templates.append(str(_ASSETS_DIR / "table.html"))
+    tabs.append({"title": "Results table", "url": "table.html"})
     context = {
-        "tabs": [
-            {"title": "Overview", "url": "index.html"},
-            {"title": "Results table", "url": "table.html"},
-        ],
+        "tabs": tabs,
         "alpha": str(alpha),
         "summary": summary,
         "vega_volcano_spec": json.dumps(volcano_spec),
@@ -391,7 +738,30 @@ def _render_report(
         "default_effect_id_json": json.dumps(default_effect_id),
         "default_effect_label": default_effect_label,
         "include_annotated_results_file": include_annotated_results_file,
+        "has_sample_distance_heatmap": has_sample_distance_heatmap,
+        "has_sample_pca_plot": has_sample_pca_plot,
+        "has_count_matrix_heatmap": has_count_matrix_heatmap,
+        "include_sample_metadata_file": sample_metadata is not None
+        and not sample_metadata.empty,
     }
+    if has_sample_distance_heatmap:
+        context["vega_sample_distance_spec"] = json.dumps(sample_distance_spec)
+        context["sample_distances_data_path_json"] = json.dumps(
+            "data/sample_distances.json"
+        )
+        context["sample_distance_order_json"] = json.dumps(ordered_sample_ids)
+        context["sample_distance_sample_count"] = len(ordered_sample_ids)
+    if has_sample_pca_plot:
+        context["vega_sample_pca_spec"] = json.dumps(sample_pca_spec)
+        context["sample_pca_data_path_json"] = json.dumps("data/sample_pca.json")
+    if has_count_matrix_heatmap:
+        context["vega_count_matrix_heatmap_spec"] = json.dumps(
+            count_matrix_heatmap_spec
+        )
+        context["count_matrix_heatmap_data_path_json"] = json.dumps(
+            "data/count_matrix_heatmap.json"
+        )
+        context["count_matrix_heatmap_feature_count"] = len(count_matrix_heatmap.index)
     q2templates.render(templates, str(output_dir), context=context)
 
 
@@ -413,6 +783,30 @@ def _write_visualization_output(
     run_result.normalized_counts.to_csv(
         output_path / "normalized_counts.tsv", sep="\t", index=False
     )
+    if run_result.sample_distance_matrix is not None:
+        run_result.sample_distance_matrix.to_csv(
+            output_path / "sample_distances.tsv",
+            sep="\t",
+            index_label="sample_id",
+        )
+        if run_result.sample_metadata is not None and not run_result.sample_metadata.empty:
+            sample_metadata = run_result.sample_metadata.copy()
+            sample_metadata.index = sample_metadata.index.map(str)
+            sample_metadata.columns = sample_metadata.columns.map(str)
+            sample_metadata.to_csv(
+                output_path / "sample_metadata.tsv",
+                sep="\t",
+                index_label="sample_id",
+            )
+    if run_result.count_matrix_heatmap is not None and not run_result.count_matrix_heatmap.empty:
+        count_matrix_heatmap = run_result.count_matrix_heatmap.copy()
+        count_matrix_heatmap.index = count_matrix_heatmap.index.map(str)
+        count_matrix_heatmap.columns = count_matrix_heatmap.columns.map(str)
+        count_matrix_heatmap.to_csv(
+            output_path / "count_matrix_heatmap.tsv",
+            sep="\t",
+            index_label="feature_id",
+        )
 
     _render_report(
         output_path,
@@ -422,6 +816,13 @@ def _write_visualization_output(
         reference_level=run_result.reference_level,
         alpha=alpha,
         include_annotated_results_file=include_annotated_results,
+        sample_distance_matrix=run_result.sample_distance_matrix,
+        sample_distance_order=run_result.sample_distance_order,
+        sample_metadata=run_result.sample_metadata,
+        reference_levels=run_result.reference_levels,
+        sample_pca_scores=run_result.sample_pca_scores,
+        sample_pca_percent_variance=run_result.sample_pca_percent_variance,
+        count_matrix_heatmap=run_result.count_matrix_heatmap,
     )
 
 

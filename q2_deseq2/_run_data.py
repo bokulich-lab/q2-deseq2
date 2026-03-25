@@ -5,9 +5,6 @@
 #
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
-
-from __future__ import annotations
-
 import json
 from pathlib import Path
 from typing import NamedTuple
@@ -20,8 +17,7 @@ from q2_deseq2.types import DESeq2RunDirectoryFormat
 class DESeq2RunResult(NamedTuple):
     results: pd.DataFrame
     normalized_counts: pd.DataFrame
-    ma_plot_png: bytes
-    volcano_plot_png: bytes
+    sample_metadata: pd.DataFrame | None = None
     test_level: str = ""
     reference_level: str = ""
     default_effect_id: str = ""
@@ -31,6 +27,11 @@ class DESeq2RunResult(NamedTuple):
     reduced_formula: str = ""
     available_results_names: tuple[str, ...] = ()
     selected_effect_specs: tuple[str, ...] = ()
+    sample_distance_matrix: pd.DataFrame | None = None
+    sample_distance_order: tuple[str, ...] = ()
+    sample_pca_scores: pd.DataFrame | None = None
+    sample_pca_percent_variance: tuple[float, float] = ()
+    count_matrix_heatmap: pd.DataFrame | None = None
 
 
 def _first_non_empty_string(value) -> str:
@@ -80,8 +81,44 @@ def _write_run_result(path: Path, run_result: DESeq2RunResult, alpha: float) -> 
     run_result.normalized_counts.to_csv(
         path / "normalized_counts.tsv", sep="\t", index=False
     )
-    (path / "ma_plot.png").write_bytes(run_result.ma_plot_png)
-    (path / "volcano_plot.png").write_bytes(run_result.volcano_plot_png)
+    if run_result.sample_metadata is not None and not run_result.sample_metadata.empty:
+        sample_metadata = run_result.sample_metadata.copy()
+        sample_metadata.index = sample_metadata.index.map(str)
+        sample_metadata.columns = sample_metadata.columns.map(str)
+        sample_metadata.to_csv(
+            path / "sample_metadata.tsv",
+            sep="\t",
+            index_label="sample_id",
+        )
+    if run_result.sample_distance_matrix is not None:
+        run_result.sample_distance_matrix.to_csv(
+            path / "sample_distances.tsv",
+            sep="\t",
+            index_label="sample_id",
+        )
+    if run_result.sample_distance_order:
+        (path / "sample_distance_order.txt").write_text(
+            "\n".join(run_result.sample_distance_order) + "\n",
+            encoding="utf-8",
+        )
+    if run_result.sample_pca_scores is not None and not run_result.sample_pca_scores.empty:
+        sample_pca_scores = run_result.sample_pca_scores.copy()
+        sample_pca_scores.index = sample_pca_scores.index.map(str)
+        sample_pca_scores.columns = sample_pca_scores.columns.map(str)
+        sample_pca_scores.to_csv(
+            path / "sample_pca.tsv",
+            sep="\t",
+            index_label="sample_id",
+        )
+    if run_result.count_matrix_heatmap is not None and not run_result.count_matrix_heatmap.empty:
+        count_matrix_heatmap = run_result.count_matrix_heatmap.copy()
+        count_matrix_heatmap.index = count_matrix_heatmap.index.map(str)
+        count_matrix_heatmap.columns = count_matrix_heatmap.columns.map(str)
+        count_matrix_heatmap.to_csv(
+            path / "count_matrix_heatmap.tsv",
+            sep="\t",
+            index_label="feature_id",
+        )
     (path / "metadata.json").write_text(
         json.dumps(
             {
@@ -100,6 +137,9 @@ def _write_run_result(path: Path, run_result: DESeq2RunResult, alpha: float) -> 
                         if "effect_id" in run_result.results.columns
                         else ()
                     )
+                ),
+                "sample_pca_percent_variance": list(
+                    run_result.sample_pca_percent_variance
                 ),
                 "alpha": alpha,
             },
@@ -141,13 +181,71 @@ def _parse_run_results(
     if not selected_effect_specs and "effect_id" in results.columns:
         selected_effect_specs = _unique_non_empty_values(results["effect_id"])
 
+    sample_distances_path = run_data_path / "sample_distances.tsv"
+    sample_distance_matrix = None
+    if sample_distances_path.exists():
+        sample_distance_matrix = pd.read_csv(
+            sample_distances_path, sep="\t", index_col=0
+        )
+        sample_distance_matrix.index = sample_distance_matrix.index.map(str)
+        sample_distance_matrix.columns = sample_distance_matrix.columns.map(str)
+        sample_distance_matrix.index.name = None
+        sample_distance_matrix.columns.name = None
+
+    sample_distance_order_path = run_data_path / "sample_distance_order.txt"
+    sample_distance_order = ()
+    if sample_distance_order_path.exists():
+        sample_distance_order = tuple(
+            _unique_non_empty_values(
+                sample_distance_order_path.read_text(encoding="utf-8").splitlines()
+            )
+        )
+    elif sample_distance_matrix is not None:
+        sample_distance_order = tuple(sample_distance_matrix.index.tolist())
+
+    sample_pca_scores_path = run_data_path / "sample_pca.tsv"
+    sample_pca_scores = None
+    if sample_pca_scores_path.exists():
+        sample_pca_scores = pd.read_csv(sample_pca_scores_path, sep="\t", index_col=0)
+        sample_pca_scores.index = sample_pca_scores.index.map(str)
+        sample_pca_scores.columns = sample_pca_scores.columns.map(str)
+        sample_pca_scores.index.name = None
+
+    sample_pca_percent_variance = ()
+    raw_percent_variance = metadata.get("sample_pca_percent_variance") or ()
+    if len(raw_percent_variance) >= 2:
+        try:
+            sample_pca_percent_variance = (
+                float(raw_percent_variance[0]),
+                float(raw_percent_variance[1]),
+            )
+        except (TypeError, ValueError):
+            sample_pca_percent_variance = ()
+
+    sample_metadata_path = run_data_path / "sample_metadata.tsv"
+    sample_metadata = None
+    if sample_metadata_path.exists():
+        sample_metadata = pd.read_csv(sample_metadata_path, sep="\t", index_col=0)
+        sample_metadata.index = sample_metadata.index.map(str)
+        sample_metadata.columns = sample_metadata.columns.map(str)
+        sample_metadata.index.name = None
+
+    count_matrix_heatmap_path = run_data_path / "count_matrix_heatmap.tsv"
+    count_matrix_heatmap = None
+    if count_matrix_heatmap_path.exists():
+        count_matrix_heatmap = pd.read_csv(
+            count_matrix_heatmap_path, sep="\t", index_col=0
+        )
+        count_matrix_heatmap.index = count_matrix_heatmap.index.map(str)
+        count_matrix_heatmap.columns = count_matrix_heatmap.columns.map(str)
+        count_matrix_heatmap.index.name = None
+
     run_result = DESeq2RunResult(
         results=results,
         normalized_counts=pd.read_csv(
             run_data_path / "normalized_counts.tsv", sep="\t"
         ),
-        ma_plot_png=(run_data_path / "ma_plot.png").read_bytes(),
-        volcano_plot_png=(run_data_path / "volcano_plot.png").read_bytes(),
+        sample_metadata=sample_metadata,
         test_level=test_level,
         reference_level=reference_level,
         default_effect_id=default_effect_id,
@@ -163,6 +261,11 @@ def _parse_run_results(
             _unique_non_empty_values(metadata.get("available_results_names") or ())
         ),
         selected_effect_specs=tuple(_unique_non_empty_values(selected_effect_specs)),
+        sample_distance_matrix=sample_distance_matrix,
+        sample_distance_order=sample_distance_order,
+        sample_pca_scores=sample_pca_scores,
+        sample_pca_percent_variance=sample_pca_percent_variance,
+        count_matrix_heatmap=count_matrix_heatmap,
     )
 
     return run_result, alpha

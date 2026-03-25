@@ -420,9 +420,11 @@ def _write_r_script(script_fp: Path) -> None:
         coldata_path <- get_arg("--coldata")
         results_path <- get_arg("--results")
         norm_counts_path <- get_arg("--normalized-counts")
+        sample_distances_path <- get_arg("--sample-distances")
+        sample_distance_order_path <- get_arg("--sample-distance-order")
+        sample_pca_path <- get_arg("--sample-pca")
+        count_matrix_heatmap_path <- get_arg("--count-matrix-heatmap")
         summary_path <- get_arg("--summary")
-        ma_plot_path <- get_arg("--ma-plot")
-        volcano_plot_path <- get_arg("--volcano-plot")
         results_names_path <- get_arg("--results-names")
         reference_levels_path <- get_arg("--reference-levels")
         effect_specs_path <- get_arg("--effect-specs")
@@ -493,9 +495,6 @@ def _write_r_script(script_fp: Path) -> None:
 
         result_frames <- list()
         summary_lines <- character()
-        default_res <- NULL
-        default_res_df <- NULL
-        default_effect_label <- NULL
 
         if (test_kind == "lrt") {
           effect_id <- sprintf("lrt::%s::vs::%s", fixed_effects_formula, reduced_formula)
@@ -520,9 +519,6 @@ def _write_r_script(script_fp: Path) -> None:
             capture.output(summary(res)),
             ""
           )
-          default_res <- res
-          default_res_df <- res_df
-          default_effect_label <- effect_label
         } else {
           effect_specs <- read_list_file(effect_specs_path)
           if (length(effect_specs) == 0) {
@@ -664,12 +660,6 @@ def _write_r_script(script_fp: Path) -> None:
               capture.output(summary(res)),
               ""
             )
-
-            if (is.null(default_res)) {
-              default_res <- res
-              default_res_df <- res_df
-              default_effect_label <- res_df$effect_label[[1]]
-            }
           }
         }
 
@@ -694,40 +684,88 @@ def _write_r_script(script_fp: Path) -> None:
           row.names = FALSE
         )
 
+        vsd <- vst(dds, blind = FALSE, nsub = min(1000, nrow(dds)))
+        sample_dists <- dist(t(assay(vsd)))
+        sample_dist_matrix <- as.matrix(sample_dists)
+        sample_dist_df <- as.data.frame(sample_dist_matrix)
+        sample_dist_df$sample_id <- rownames(sample_dist_df)
+        sample_dist_df <- sample_dist_df[
+          ,
+          c("sample_id", setdiff(colnames(sample_dist_df), "sample_id"))
+        ]
+        write.table(
+          sample_dist_df,
+          file = sample_distances_path,
+          sep = "\\t",
+          quote = FALSE,
+          row.names = FALSE
+        )
+
+        sample_hclust <- hclust(sample_dists)
+        writeLines(
+          sample_hclust$labels[sample_hclust$order],
+          con = sample_distance_order_path
+        )
+
+        ntop <- min(500, nrow(vsd))
+        rv <- matrixStats::rowVars(assay(vsd))
+        select <- order(rv, decreasing = TRUE)[seq_len(ntop)]
+        sample_pca <- prcomp(t(assay(vsd)[select, , drop = FALSE]))
+        total_variance <- sum(sample_pca$sdev^2)
+        if (total_variance > 0) {
+          percent_var <- (sample_pca$sdev^2) / total_variance
+        } else {
+          percent_var <- c(1, rep(0, max(1, length(sample_pca$sdev) - 1)))
+        }
+
+        sample_ids <- rownames(sample_pca$x)
+        pc1_values <- if (ncol(sample_pca$x) >= 1) sample_pca$x[, 1] else rep(0, length(sample_ids))
+        pc2_values <- if (ncol(sample_pca$x) >= 2) sample_pca$x[, 2] else rep(0, length(sample_ids))
+        percent_pc1 <- if (length(percent_var) >= 1) percent_var[[1]] * 100 else 0
+        percent_pc2 <- if (length(percent_var) >= 2) percent_var[[2]] * 100 else 0
+        sample_pca_df <- data.frame(
+          sample_id = sample_ids,
+          PC1 = pc1_values,
+          PC2 = pc2_values,
+          percent_variance_pc1 = rep(percent_pc1, length(sample_ids)),
+          percent_variance_pc2 = rep(percent_pc2, length(sample_ids)),
+          row.names = NULL,
+          check.names = FALSE
+        )
+        write.table(
+          sample_pca_df,
+          file = sample_pca_path,
+          sep = "\\t",
+          quote = FALSE,
+          row.names = FALSE
+        )
+
+        top_heatmap_n <- min(100, nrow(dds))
+        top_heatmap_select <- order(
+          rowMeans(counts(dds, normalized = TRUE)),
+          decreasing = TRUE
+        )[seq_len(top_heatmap_n)]
+        ordered_sample_ids <- sample_hclust$labels[sample_hclust$order]
+        count_matrix_heatmap_df <- as.data.frame(
+          assay(vsd)[top_heatmap_select, ordered_sample_ids, drop = FALSE]
+        )
+        count_matrix_heatmap_df$feature_id <- rownames(count_matrix_heatmap_df)
+        count_matrix_heatmap_df <- count_matrix_heatmap_df[
+          ,
+          c("feature_id", setdiff(colnames(count_matrix_heatmap_df), "feature_id"))
+        ]
+        write.table(
+          count_matrix_heatmap_df,
+          file = count_matrix_heatmap_path,
+          sep = "\\t",
+          quote = FALSE,
+          row.names = FALSE
+        )
+
         if (length(summary_lines) == 0) {
           summary_lines <- "No effects were generated."
         }
         writeLines(summary_lines, con = summary_path)
-
-        plot_label <- default_effect_label
-        png(filename = ma_plot_path, width = 1200, height = 900)
-        plotMA(default_res, alpha = alpha, main = paste("DESeq2 MA plot:", plot_label))
-        dev.off()
-
-        y_values <- -log10(default_res_df$padj)
-        finite_idx <- is.finite(default_res_df$log2FoldChange) & is.finite(y_values)
-
-        png(filename = volcano_plot_path, width = 1200, height = 900)
-        if (any(finite_idx)) {
-          plot(
-            default_res_df$log2FoldChange[finite_idx],
-            y_values[finite_idx],
-            pch = 20,
-            col = rgb(0.2, 0.4, 0.7, 0.65),
-            xlab = "log2 fold change",
-            ylab = "-log10 adjusted p-value",
-            main = paste("DESeq2 Volcano Plot:", plot_label)
-          )
-          abline(v = 0, col = "#1F77B4", lty = 2)
-          if (alpha > 0 && alpha < 1) {
-            abline(h = -log10(alpha), col = "#D62728", lty = 3)
-          }
-        } else {
-          plot.new()
-          title(main = paste("DESeq2 Volcano Plot:", plot_label))
-          text(0.5, 0.5, "No finite points available for volcano plot.")
-        }
-        dev.off()
         """
     ).strip()
     script_fp.write_text(script + "\n", encoding="utf-8")
@@ -797,13 +835,16 @@ def _run_deseq2_with_frames(
         coldata_fp = temp_path / "coldata.tsv"
         results_fp = temp_path / "deseq2_results.tsv"
         normalized_counts_fp = temp_path / "normalized_counts.tsv"
+        sample_distances_fp = temp_path / "sample_distances.tsv"
+        sample_distance_order_fp = temp_path / "sample_distance_order.txt"
+        sample_pca_fp = temp_path / "sample_pca.tsv"
+        count_matrix_heatmap_fp = temp_path / "count_matrix_heatmap.tsv"
         summary_fp = temp_path / "deseq2_summary.txt"
-        ma_plot_fp = temp_path / "ma_plot.png"
-        volcano_plot_fp = temp_path / "volcano_plot.png"
         results_names_fp = temp_path / "results_names.txt"
         reference_levels_fp = temp_path / "reference_levels.txt"
         effect_specs_fp = temp_path / "effect_specs.txt"
         script_fp = temp_path / "run_deseq2.R"
+        ma_plot_fp = temp_path / "ma_plot.png"
 
         counts_df.to_csv(counts_fp, sep="\t", index_label="feature_id")
         coldata_df.to_csv(coldata_fp, sep="\t", index_label="sample_id")
@@ -822,12 +863,18 @@ def _run_deseq2_with_frames(
             str(results_fp),
             "--normalized-counts",
             str(normalized_counts_fp),
+            "--sample-distances",
+            str(sample_distances_fp),
+            "--sample-distance-order",
+            str(sample_distance_order_fp),
+            "--sample-pca",
+            str(sample_pca_fp),
+            "--count-matrix-heatmap",
+            str(count_matrix_heatmap_fp),
             "--summary",
             str(summary_fp),
             "--ma-plot",
             str(ma_plot_fp),
-            "--volcano-plot",
-            str(volcano_plot_fp),
             "--results-names",
             str(results_names_fp),
             "--reference-levels",
@@ -861,8 +908,10 @@ def _run_deseq2_with_frames(
         expected_outputs = {
             "deseq2_results.tsv": results_fp,
             "normalized_counts.tsv": normalized_counts_fp,
-            "ma_plot.png": ma_plot_fp,
-            "volcano_plot.png": volcano_plot_fp,
+            "sample_distances.tsv": sample_distances_fp,
+            "sample_distance_order.txt": sample_distance_order_fp,
+            "sample_pca.tsv": sample_pca_fp,
+            "count_matrix_heatmap.tsv": count_matrix_heatmap_fp,
             "results_names.txt": results_names_fp,
         }
         for expected_name, path in expected_outputs.items():
@@ -873,6 +922,39 @@ def _run_deseq2_with_frames(
 
         results_df = pd.read_csv(results_fp, sep="\t")
         normalized_counts_df = pd.read_csv(normalized_counts_fp, sep="\t")
+        sample_distance_matrix = pd.read_csv(
+            sample_distances_fp, sep="\t", index_col=0
+        )
+        sample_distance_matrix.index = sample_distance_matrix.index.map(str)
+        sample_distance_matrix.columns = sample_distance_matrix.columns.map(str)
+        sample_distance_matrix.index.name = None
+        sample_distance_matrix.columns.name = None
+        sample_distance_order = _unique_non_empty_values(
+            sample_distance_order_fp.read_text(encoding="utf-8").splitlines()
+        )
+        sample_pca_scores = pd.read_csv(sample_pca_fp, sep="\t", index_col=0)
+        sample_pca_scores.index = sample_pca_scores.index.map(str)
+        sample_pca_scores.columns = sample_pca_scores.columns.map(str)
+        sample_pca_scores.index.name = None
+        sample_pca_scores.columns.name = None
+        count_matrix_heatmap = pd.read_csv(
+            count_matrix_heatmap_fp, sep="\t", index_col=0
+        )
+        count_matrix_heatmap.index = count_matrix_heatmap.index.map(str)
+        count_matrix_heatmap.columns = count_matrix_heatmap.columns.map(str)
+        count_matrix_heatmap.index.name = None
+        count_matrix_heatmap.columns.name = None
+        sample_pca_percent_variance = ()
+        if {"percent_variance_pc1", "percent_variance_pc2"} <= set(
+            sample_pca_scores.columns
+        ):
+            sample_pca_percent_variance = (
+                float(sample_pca_scores.iloc[0]["percent_variance_pc1"]),
+                float(sample_pca_scores.iloc[0]["percent_variance_pc2"]),
+            )
+            sample_pca_scores = sample_pca_scores.drop(
+                columns=["percent_variance_pc1", "percent_variance_pc2"]
+            )
         available_results_names = _unique_non_empty_values(
             results_names_fp.read_text(encoding="utf-8").splitlines()
         )
@@ -880,12 +962,14 @@ def _run_deseq2_with_frames(
             results_df["effect_id"] if "effect_id" in results_df.columns else ()
         )
         default_effect_id = _first_value_from_column(results_df, "effect_id")
+        sample_metadata_df = coldata_df.copy()
+        sample_metadata_df.index = sample_metadata_df.index.map(str)
+        sample_metadata_df.columns = sample_metadata_df.columns.map(str)
 
         return DESeq2RunResult(
             results=results_df,
             normalized_counts=normalized_counts_df,
-            ma_plot_png=ma_plot_fp.read_bytes(),
-            volcano_plot_png=volcano_plot_fp.read_bytes(),
+            sample_metadata=sample_metadata_df,
             test_level=legacy_test_level or _first_value_from_column(results_df, "test_level"),
             reference_level=legacy_reference_level
             or _first_value_from_column(results_df, "reference_level"),
@@ -896,6 +980,11 @@ def _run_deseq2_with_frames(
             reduced_formula=normalized_reduced_formula,
             available_results_names=available_results_names,
             selected_effect_specs=selected_effect_specs,
+            sample_distance_matrix=sample_distance_matrix,
+            sample_distance_order=sample_distance_order,
+            sample_pca_scores=sample_pca_scores,
+            sample_pca_percent_variance=sample_pca_percent_variance,
+            count_matrix_heatmap=count_matrix_heatmap,
         )
 
 

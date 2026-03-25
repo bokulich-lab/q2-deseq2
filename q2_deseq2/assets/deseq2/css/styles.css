@@ -17,11 +17,16 @@
   min-height: 520px;
 }
 
-#volcano-fallback img,
-#ma-fallback img {
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  max-width: 100%;
+#sample-distance-view {
+  width: 100%;
+  min-height: 260px;
+  min-width: 0;
+}
+
+#count-matrix-heatmap-view {
+  width: 100%;
+  min-height: 320px;
+  min-width: 0;
 }
 
 .results-actions {
@@ -106,17 +111,208 @@
 }
 
 .paired-plots {
+  align-items: stretch;
   display: grid;
   gap: 24px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.sample-distance-shell {
+  background: #ffffff;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 10px 4px 8px 2px;
+}
+
+.sample-distance-panels-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.sample-distance-layout {
+  align-items: start;
+  display: grid;
+  gap: 2px;
+  grid-template-columns: fit-content(220px) minmax(0, 1fr);
+  min-height: 0;
+  width: 100%;
+}
+
+.sample-distance-row-labels {
+  display: grid;
+  min-width: 0;
+}
+
+.sample-distance-plot-shell,
+.sample-pca-plot-shell {
+  min-width: 0;
+  overflow: hidden;
+  width: 100%;
+}
+
+.sample-distance-row-label {
+  align-items: center;
+  color: #111827;
+  display: flex;
+  font-size: 13px;
+  gap: 4px;
+  justify-content: flex-end;
+  min-width: 0;
+  overflow: hidden;
+  padding-right: 0;
+  white-space: nowrap;
+}
+
+.sample-distance-row-sample {
+  color: #111827;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sample-distance-row-separator {
+  color: #9ca3af;
+  flex: 0 0 auto;
+  font-size: 12px;
+}
+
+.sample-distance-row-meta {
+  background: var(--sample-distance-meta-bg, #eff6ff);
+  border: 1px solid var(--sample-distance-meta-border, #bfdbfe);
+  border-radius: 999px;
+  color: var(--sample-distance-meta-text, #1d4ed8);
+  display: inline-flex;
+  flex: 0 1 auto;
+  font-size: 12px;
+  font-weight: 600;
+  max-width: 42%;
+  min-width: 0;
+  overflow: hidden;
+  padding: 1px 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sample-distance-legend {
+  align-self: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-left: auto;
+  margin-bottom: 10px;
+  max-width: 220px;
+}
+
+.sample-distance-legend-title {
+  color: #111827;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.sample-distance-legend-bar {
+  background: linear-gradient(90deg, #08306b 0%, #6baed6 55%, #deebf7 100%);
+  border-radius: 999px;
+  height: 12px;
+  width: 100%;
+}
+
+.sample-distance-legend-scale {
+  color: #4b5563;
+  display: flex;
+  font-size: 13px;
+  justify-content: space-between;
+  line-height: 1.1;
+  width: 100%;
+}
+
+.sample-distance-notes {
+  margin-bottom: 16px;
+}
+
+.sample-pca-shell {
+  min-height: 420px;
+}
+
+.sample-count-matrix-column {
+  margin-top: 24px;
+}
+
+.count-matrix-shell {
+  padding-top: 8px;
+}
+
+.count-matrix-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.count-matrix-plot-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.count-matrix-sample-labels {
+  align-self: flex-start;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.count-matrix-sample-header {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.count-matrix-sample-name {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.count-matrix-sample-meta-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+  min-width: 0;
+}
+
+.count-matrix-sample-meta-strip .sample-distance-row-meta {
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 1;
+  max-width: none;
+  min-width: 20px;
+  padding: 2px 5px;
+  text-align: center;
+}
+
 .plot-column {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   min-width: 0;
 }
 
 .plot-column > .text-muted {
   margin-bottom: 16px;
+}
+
+#sample-distance-view,
+#sample-pca-view {
+  display: block;
+  min-width: 0;
+  width: 100%;
 }
 
 .plot-toolbar-summary {
@@ -160,7 +356,6 @@
 .plot-legend-box {
   align-items: center;
   background: #f8f8f8;
-  border: 1px solid #ddd;
   border-radius: 4px;
   display: flex;
   flex-wrap: wrap;

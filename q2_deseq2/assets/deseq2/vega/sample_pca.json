@@ -1,0 +1,141 @@
+{
+  "$schema": "https://vega.github.io/schema/vega/v5.json",
+  "autosize": {
+    "type": "pad",
+    "contains": "padding"
+  },
+  "padding": {
+    "left": 62,
+    "right": 18,
+    "top": 18,
+    "bottom": 56
+  },
+  "width": 480,
+  "height": 340,
+  "data": [
+    {
+      "name": "points",
+      "values": []
+    }
+  ],
+  "scales": [
+    {
+      "name": "x",
+      "type": "linear",
+      "domain": {
+        "data": "points",
+        "field": "PC1"
+      },
+      "nice": true,
+      "zero": false,
+      "range": "width"
+    },
+    {
+      "name": "y",
+      "type": "linear",
+      "domain": {
+        "data": "points",
+        "field": "PC2"
+      },
+      "nice": true,
+      "zero": false,
+      "range": "height"
+    },
+    {
+      "name": "color",
+      "type": "ordinal",
+      "domain": {
+        "data": "points",
+        "field": "group_value"
+      },
+      "range": {
+        "scheme": "tableau10"
+      }
+    }
+  ],
+  "axes": [
+    {
+      "orient": "bottom",
+      "scale": "x",
+      "title": "PC1",
+      "labelFontSize": 11,
+      "titleFontSize": 12,
+      "tickCount": 5,
+      "grid": true,
+      "gridColor": "#e5e7eb"
+    },
+    {
+      "orient": "left",
+      "scale": "y",
+      "title": "PC2",
+      "labelFontSize": 11,
+      "titleFontSize": 12,
+      "tickCount": 5,
+      "grid": true,
+      "gridColor": "#e5e7eb"
+    }
+  ],
+  "legends": [
+    {
+      "fill": "color",
+      "orient": "top",
+      "direction": "horizontal",
+      "title": "Group",
+      "labelFontSize": 11,
+      "titleFontSize": 12,
+      "symbolType": "circle"
+    }
+  ],
+  "marks": [
+    {
+      "type": "symbol",
+      "from": {
+        "data": "points"
+      },
+      "encode": {
+        "enter": {
+          "size": {
+            "value": 180
+          },
+          "stroke": {
+            "value": "#ffffff"
+          },
+          "strokeWidth": {
+            "value": 1.5
+          },
+          "tooltip": {
+            "signal": "{'Sample': datum.sample_id, 'Metadata': datum.sample_metadata || 'NA', 'PC1': format(datum.PC1, '.4f'), 'PC2': format(datum.PC2, '.4f')}"
+          }
+        },
+        "update": {
+          "x": {
+            "scale": "x",
+            "field": "PC1"
+          },
+          "y": {
+            "scale": "y",
+            "field": "PC2"
+          },
+          "fill": {
+            "scale": "color",
+            "field": "group_value"
+          },
+          "opacity": {
+            "value": 0.92
+          }
+        },
+        "hover": {
+          "size": {
+            "value": 240
+          },
+          "stroke": {
+            "value": "#111827"
+          },
+          "strokeWidth": {
+            "value": 2
+          }
+        }
+      }
+    }
+  ]
+}

@@ -81,7 +81,157 @@ class DESeq2RunMetadataFormat(model.TextFileFormat):
             raise ValidationError('DESeq2 run metadata test must be "wald" or "lrt".')
 
 
+class DESeq2DistanceMatrixFormat(model.TextFileFormat):
+    def _validate_(self, level):
+        record_limit = None if level == "max" else 5
+
+        with self.open() as fh:
+            reader = csv.reader(fh, delimiter="\t")
+            try:
+                header = next(reader)
+            except StopIteration as exc:
+                raise ValidationError("DESeq2 sample distance file is empty.") from exc
+
+            if not header or header[0] != "sample_id":
+                raise ValidationError(
+                    'DESeq2 sample distance table must start with a "sample_id" header column.'
+                )
+
+            for line_no, row in enumerate(reader, start=2):
+                if record_limit is not None and line_no > (record_limit + 1):
+                    break
+
+                if not row:
+                    continue
+
+                if len(row) != len(header):
+                    raise ValidationError(
+                        f"Line {line_no} has {len(row)} fields, expected {len(header)}."
+                    )
+
+
+class DESeq2DistanceOrderFormat(model.TextFileFormat):
+    def _validate_(self, level):
+        with self.open() as fh:
+            lines = [line.strip() for line in fh]
+
+        if lines and not any(lines):
+            raise ValidationError(
+                "DESeq2 sample distance order file must contain at least one sample ID."
+            )
+
+
+class DESeq2SampleMetadataFormat(model.TextFileFormat):
+    def _validate_(self, level):
+        record_limit = None if level == "max" else 5
+
+        with self.open() as fh:
+            reader = csv.reader(fh, delimiter="\t")
+            try:
+                header = next(reader)
+            except StopIteration as exc:
+                raise ValidationError("DESeq2 sample metadata file is empty.") from exc
+
+            if not header or header[0] != "sample_id":
+                raise ValidationError(
+                    'DESeq2 sample metadata table must start with a "sample_id" header column.'
+                )
+
+            for line_no, row in enumerate(reader, start=2):
+                if record_limit is not None and line_no > (record_limit + 1):
+                    break
+
+                if not row:
+                    continue
+
+                if len(row) != len(header):
+                    raise ValidationError(
+                        f"Line {line_no} has {len(row)} fields, expected {len(header)}."
+                    )
+
+
+class DESeq2SamplePCAFormat(model.TextFileFormat):
+    def _validate_(self, level):
+        record_limit = None if level == "max" else 5
+
+        with self.open() as fh:
+            reader = csv.reader(fh, delimiter="\t")
+            try:
+                header = next(reader)
+            except StopIteration as exc:
+                raise ValidationError("DESeq2 sample PCA file is empty.") from exc
+
+            required = {"sample_id", "PC1", "PC2"}
+            missing = required.difference(header)
+            if missing:
+                missing_list = ", ".join(sorted(missing))
+                raise ValidationError(
+                    "DESeq2 sample PCA table is missing required columns: "
+                    f"{missing_list}."
+                )
+
+            for line_no, row in enumerate(reader, start=2):
+                if record_limit is not None and line_no > (record_limit + 1):
+                    break
+
+                if not row:
+                    continue
+
+                if len(row) != len(header):
+                    raise ValidationError(
+                        f"Line {line_no} has {len(row)} fields, expected {len(header)}."
+                    )
+
+
+class DESeq2CountMatrixHeatmapFormat(model.TextFileFormat):
+    def _validate_(self, level):
+        record_limit = None if level == "max" else 5
+
+        with self.open() as fh:
+            reader = csv.reader(fh, delimiter="\t")
+            try:
+                header = next(reader)
+            except StopIteration as exc:
+                raise ValidationError(
+                    "DESeq2 count-matrix heatmap file is empty."
+                ) from exc
+
+            if not header or header[0] != "feature_id":
+                raise ValidationError(
+                    'DESeq2 count-matrix heatmap table must start with a "feature_id" header column.'
+                )
+
+            for line_no, row in enumerate(reader, start=2):
+                if record_limit is not None and line_no > (record_limit + 1):
+                    break
+
+                if not row:
+                    continue
+
+                if len(row) != len(header):
+                    raise ValidationError(
+                        f"Line {line_no} has {len(row)} fields, expected {len(header)}."
+                    )
+
+
 class DESeq2RunDirectoryFormat(model.DirectoryFormat):
     results = model.File("deseq2_results.tsv", format=DESeq2StatsFormat)
     normalized_counts = model.File("normalized_counts.tsv", format=DESeq2StatsFormat)
     metadata = model.File("metadata.json", format=DESeq2RunMetadataFormat)
+    sample_metadata = model.File(
+        "sample_metadata.tsv", format=DESeq2SampleMetadataFormat, optional=True
+    )
+    sample_distances = model.File(
+        "sample_distances.tsv", format=DESeq2DistanceMatrixFormat, optional=True
+    )
+    sample_distance_order = model.File(
+        "sample_distance_order.txt", format=DESeq2DistanceOrderFormat, optional=True
+    )
+    sample_pca = model.File(
+        "sample_pca.tsv", format=DESeq2SamplePCAFormat, optional=True
+    )
+    count_matrix_heatmap = model.File(
+        "count_matrix_heatmap.tsv",
+        format=DESeq2CountMatrixHeatmapFormat,
+        optional=True,
+    )

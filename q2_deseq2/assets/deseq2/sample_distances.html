@@ -1,0 +1,156 @@
+{% extends "tabbed.html" %}
+
+{% block head %}
+<title>DESeq2 sample-to-sample distances</title>
+<link href="css/styles.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/vega@5" type="text/javascript"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-embed@6" type="text/javascript"></script>
+<script src="js/sample_distances.js" type="text/javascript"></script>
+{% endblock %}
+
+{% block tabcontent %}
+<div class="row top-spaced-row">
+  <div class="col-lg-12">
+    <div class="report-header">
+      <h3 class="report-title">
+        {% if has_sample_pca_plot %}
+        Sample-to-sample distances and PCA
+        {% else %}
+        Sample-to-sample distance heatmap
+        {% endif %}
+      </h3>
+      <p class="text-muted sample-distance-notes">
+        Explore Euclidean distances between samples computed from
+        <code>vst(dds, blind=FALSE)</code> transformed counts and ordered by
+        hierarchical clustering, following the DESeq2 sample-distance heatmap
+        workflow.
+        {% if has_sample_pca_plot %}
+        The companion panel shows the first two principal components from the
+        same transformed assay, matching the DESeq2 sample PCA workflow.
+        {% endif %}
+        When model metadata are available, the row labels and PCA tooltips
+        include the corresponding sample annotations.
+      </p>
+
+      <div class="results-toolbar">
+        <div class="summary-chips">
+          <span class="summary-chip">
+            <strong>{{ sample_distance_sample_count }}</strong>
+            <span>samples</span>
+          </span>
+          <span class="summary-chip">
+            <strong>VST</strong>
+            <span>transform</span>
+          </span>
+          <span class="summary-chip">
+            <strong>Euclidean</strong>
+            <span>distance</span>
+          </span>
+        </div>
+        <div class="results-actions">
+          <a href="sample_distances.tsv" class="btn btn-default">Download sample distance TSV</a>
+          {% if has_count_matrix_heatmap %}
+          <a href="count_matrix_heatmap.tsv" class="btn btn-default">Download count matrix heatmap TSV</a>
+          {% endif %}
+          {% if include_sample_metadata_file %}
+          <a href="sample_metadata.tsv" class="btn btn-default">Download sample metadata TSV</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="paired-plots{% if not has_sample_pca_plot %} sample-distance-panels-single{% endif %}">
+      <section class="plot-column">
+        <div class="plot-legend-box">
+          <span class="plot-legend-title">Sample distance heatmap</span>
+        </div>
+        <p class="text-muted">
+          Inspect clustered Euclidean distances between samples from the shared
+          <code>vst</code> assay.
+        </p>
+        <div id="sample-distance-error" class="alert alert-danger" hidden></div>
+        <div class="sample-distance-shell">
+          <div id="sample-distance-legend" class="sample-distance-legend" hidden></div>
+          <div class="sample-distance-layout">
+            <div id="sample-distance-row-labels" class="sample-distance-row-labels"></div>
+            <div class="sample-distance-plot-shell">
+              <div id="sample-distance-view"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {% if has_sample_pca_plot %}
+      <section class="plot-column">
+        <div class="plot-legend-box">
+          <span class="plot-legend-title">Principal component plot</span>
+        </div>
+        <p class="text-muted">
+          Inspect PC1 and PC2 from the same transformed assay used to build the
+          distance heatmap.
+        </p>
+        <div id="sample-pca-error" class="alert alert-danger" hidden></div>
+        <div class="sample-distance-shell sample-pca-shell">
+          <div class="sample-pca-plot-shell">
+            <div id="sample-pca-view"></div>
+          </div>
+        </div>
+      </section>
+      {% endif %}
+    </div>
+
+    {% if has_count_matrix_heatmap %}
+    <section class="plot-column sample-count-matrix-column">
+      <div class="plot-legend-box">
+        <span class="plot-legend-title">Count matrix heatmap</span>
+      </div>
+      <p class="text-muted">
+        Inspect the top {{ count_matrix_heatmap_feature_count }} features by normalized mean,
+        shown as <code>vst</code>-transformed counts across the ordered samples.
+      </p>
+      <div id="count-matrix-heatmap-error" class="alert alert-danger" hidden></div>
+        <div class="sample-distance-shell count-matrix-shell">
+          <div id="count-matrix-heatmap-legend" class="sample-distance-legend" hidden></div>
+          <div class="sample-distance-layout count-matrix-layout">
+            <div class="sample-distance-plot-shell count-matrix-plot-shell">
+              <div id="count-matrix-sample-labels" class="count-matrix-sample-labels"></div>
+              <div id="count-matrix-heatmap-view"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    {% endif %}
+  </div>
+</div>
+
+<script id="vega_sample_distance_spec" type="application/json">
+{{ vega_sample_distance_spec | safe }}
+</script>
+<script id="sample_distances_data_path" type="application/json">
+{{ sample_distances_data_path_json | safe }}
+</script>
+<script id="sample_distance_order" type="application/json">
+{{ sample_distance_order_json | safe }}
+</script>
+{% if has_sample_pca_plot %}
+<script id="vega_sample_pca_spec" type="application/json">
+{{ vega_sample_pca_spec | safe }}
+</script>
+<script id="sample_pca_data_path" type="application/json">
+{{ sample_pca_data_path_json | safe }}
+</script>
+{% endif %}
+{% if has_count_matrix_heatmap %}
+<script id="vega_count_matrix_heatmap_spec" type="application/json">
+{{ vega_count_matrix_heatmap_spec | safe }}
+</script>
+<script id="count_matrix_heatmap_data_path" type="application/json">
+{{ count_matrix_heatmap_data_path_json | safe }}
+</script>
+{% endif %}
+{% endblock %}
+
+{% block footer %}
+{% set loading_selector = '#sample-distance-view' %}
+{% include 'js-error-handler.html' %}
+{% endblock %}

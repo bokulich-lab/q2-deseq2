@@ -1,0 +1,131 @@
+{
+  "$schema": "https://vega.github.io/schema/vega/v5.json",
+  "autosize": {
+    "type": "pad",
+    "contains": "padding"
+  },
+  "padding": {
+    "left": 120,
+    "right": 60,
+    "top": 10,
+    "bottom": 130
+  },
+  "width": 720,
+  "height": 360,
+  "data": [
+    {
+      "name": "cells",
+      "values": []
+    }
+  ],
+  "scales": [
+    {
+      "name": "x",
+      "type": "band",
+      "domain": [],
+      "range": "width",
+      "paddingInner": 0.02,
+      "paddingOuter": 0
+    },
+    {
+      "name": "y",
+      "type": "band",
+      "domain": [],
+      "range": "height",
+      "paddingInner": 0.02,
+      "paddingOuter": 0
+    },
+    {
+      "name": "color",
+      "type": "linear",
+      "domain": {
+        "data": "cells",
+        "field": "value"
+      },
+      "range": {
+        "scheme": "blues"
+      },
+      "reverse": true,
+      "nice": true,
+      "zero": false
+    }
+  ],
+  "axes": [
+    {
+      "orient": "bottom",
+      "scale": "x",
+      "labelAngle": 90,
+      "labelAlign": "left",
+      "labelBaseline": "middle",
+      "labelLimit": 180,
+      "labelFontSize": 12
+    },
+    {
+      "orient": "left",
+      "scale": "y",
+      "labelLimit": 240,
+      "labelFontSize": 12
+    }
+  ],
+  "legends": [
+    {
+      "fill": "color",
+      "orient": "top",
+      "direction": "horizontal",
+      "title": "VST count",
+      "gradientLength": 180,
+      "gradientThickness": 12
+    }
+  ],
+  "marks": [
+    {
+      "type": "rect",
+      "from": {
+        "data": "cells"
+      },
+      "encode": {
+        "enter": {
+          "tooltip": {
+            "signal": "{'Feature': datum.feature_id, 'Sample': datum.sample_id, 'VST count': datum.value == null ? 'NA' : format(datum.value, '.4f')}"
+          }
+        },
+        "update": {
+          "x": {
+            "scale": "x",
+            "field": "sample_id"
+          },
+          "y": {
+            "scale": "y",
+            "field": "feature_id"
+          },
+          "width": {
+            "scale": "x",
+            "band": 1
+          },
+          "height": {
+            "scale": "y",
+            "band": 1
+          },
+          "fill": {
+            "scale": "color",
+            "field": "value"
+          },
+          "stroke": {
+            "value": "#f8fafc"
+          },
+          "strokeWidth": {
+            "value": 1
+          }
+        },
+        "hover": {
+          "stroke": {
+            "value": "#111827"
+          },
+          "strokeWidth": {
+            "value": 1.5
+          }
+        }
+      }
+    }
+  ]
+}

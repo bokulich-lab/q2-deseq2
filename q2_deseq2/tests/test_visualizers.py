@@ -111,11 +111,23 @@ class TestVisualizers(TestPluginBase):
                 {"feature_id": "GG_OTU_2", "Sample1": 50.0, "Sample2": 60.0},
             ]
         )
+        self.sample_distance_matrix = pd.DataFrame(
+            [[0.0, 1.75], [1.75, 0.0]],
+            index=["Sample1", "Sample2"],
+            columns=["Sample1", "Sample2"],
+        )
+        self.sample_metadata = pd.DataFrame(
+            {
+                "batch": ["A", "B"],
+                "condition": ["control", "treated"],
+                "depth": [11.0, 14.5],
+            },
+            index=["Sample1", "Sample2"],
+        )
         self.run_result = DESeq2RunResult(
             results=self.multi_results,
             normalized_counts=self.normalized_counts,
-            ma_plot_png=b"ma-plot",
-            volcano_plot_png=b"volcano-plot",
+            sample_metadata=self.sample_metadata,
             test_level="other",
             reference_level="control",
             default_effect_id="contrast::condition::other::control",
@@ -127,6 +139,17 @@ class TestVisualizers(TestPluginBase):
             selected_effect_specs=(
                 "contrast::condition::other::control",
                 "contrast::condition::treated::control",
+            ),
+            sample_distance_matrix=self.sample_distance_matrix,
+            sample_distance_order=("Sample2", "Sample1"),
+            sample_pca_scores=pd.DataFrame(
+                {"PC1": [-2.1, 2.1], "PC2": [0.35, -0.35]},
+                index=["Sample1", "Sample2"],
+            ),
+            sample_pca_percent_variance=(68.2, 21.5),
+            count_matrix_heatmap=pd.DataFrame(
+                {"Sample2": [7.5, 5.1], "Sample1": [6.8, 4.6]},
+                index=["GG_OTU_2", "GG_OTU_1"],
             ),
         )
 
@@ -274,6 +297,86 @@ class TestVisualizers(TestPluginBase):
         self.assertEqual(payload["data"][0][0], "GG_OTU_1")
         self.assertIsNone(payload["data"][2][2])
 
+    def test_prepare_sample_distance_payload_preserves_cluster_order(self):
+        payload = json.loads(
+            visualizers._prepare_sample_distance_payload(
+                self.sample_distance_matrix,
+                ("Sample2", "Sample1"),
+                sample_metadata=self.sample_metadata,
+                reference_levels=("condition::control",),
+            )
+        )
+
+        self.assertEqual(payload[0]["sample_x"], "Sample2")
+        self.assertEqual(payload[0]["sample_y"], "Sample2")
+        self.assertEqual(
+            payload[0]["sample_y_label"],
+            "Sample2 | condition=treated | batch=B",
+        )
+        self.assertEqual(payload[1]["sample_x"], "Sample1")
+        self.assertEqual(payload[1]["sample_y"], "Sample2")
+        self.assertEqual(payload[1]["distance"], 1.75)
+        self.assertEqual(payload[1]["sample_x_metadata"], "condition=control; batch=A")
+        self.assertEqual(payload[1]["sample_y_metadata"], "condition=treated; batch=B")
+
+    def test_build_sample_label_map_prioritizes_reference_columns(self):
+        sample_labels, sample_metadata_text = visualizers._build_sample_label_map(
+            self.sample_metadata,
+            ["Sample2", "Sample1"],
+            ("condition::control",),
+        )
+
+        self.assertEqual(
+            sample_labels["Sample2"],
+            "Sample2 | condition=treated | batch=B",
+        )
+        self.assertEqual(
+            sample_metadata_text["Sample1"],
+            "condition=control; batch=A",
+        )
+
+    def test_prepare_sample_pca_payload_uses_reference_grouping(self):
+        payload = json.loads(
+            visualizers._prepare_sample_pca_payload(
+                self.run_result.sample_pca_scores,
+                sample_pca_percent_variance=self.run_result.sample_pca_percent_variance,
+                sample_distance_order=("Sample2", "Sample1"),
+                sample_metadata=self.sample_metadata,
+                reference_levels=("condition::control",),
+            )
+        )
+
+        self.assertEqual(payload["group_field"], "condition")
+        self.assertEqual(payload["group_label"], "condition (ref: control)")
+        self.assertEqual(payload["percent_variance"]["PC1"], 68.2)
+        self.assertEqual(payload["points"][0]["sample_id"], "Sample2")
+        self.assertEqual(payload["points"][0]["group_value"], "treated")
+        self.assertEqual(
+            payload["points"][1]["sample_metadata"],
+            "condition=control; batch=A",
+        )
+
+    def test_prepare_count_matrix_heatmap_payload_preserves_order(self):
+        payload = json.loads(
+            visualizers._prepare_count_matrix_heatmap_payload(
+                self.run_result.count_matrix_heatmap,
+                sample_metadata=self.sample_metadata,
+                reference_levels=("condition::control",),
+            )
+        )
+
+        self.assertEqual(payload["feature_order"], ["GG_OTU_2", "GG_OTU_1"])
+        self.assertEqual(payload["sample_order"], ["Sample2", "Sample1"])
+        self.assertEqual(payload["samples"][0]["sample_id"], "Sample2")
+        self.assertEqual(
+            payload["samples"][0]["sample_metadata"],
+            "condition=treated; batch=B",
+        )
+        self.assertEqual(payload["cells"][0]["feature_id"], "GG_OTU_2")
+        self.assertEqual(payload["cells"][0]["sample_id"], "Sample2")
+        self.assertEqual(payload["cells"][0]["value"], 7.5)
+        self.assertEqual(payload["cells"][0]["sample_metadata"], "condition=treated; batch=B")
+
     def test_write_visualization_output_renders_tabbed_report(self):
         captured = {}
 
@@ -297,14 +400,43 @@ class TestVisualizers(TestPluginBase):
             self.assertTrue((output_path / "deseq2_results.tsv").exists())
             self.assertTrue((output_path / "deseq2_results_annotated.tsv").exists())
             self.assertTrue((output_path / "normalized_counts.tsv").exists())
+            self.assertTrue((output_path / "sample_distances.tsv").exists())
+            self.assertTrue((output_path / "sample_metadata.tsv").exists())
+            self.assertTrue((output_path / "count_matrix_heatmap.tsv").exists())
+            self.assertFalse((output_path / "ma_plot.png").exists())
+            self.assertFalse((output_path / "volcano_plot.png").exists())
             self.assertTrue((output_path / "data" / "results_table.json").exists())
+            self.assertTrue((output_path / "data" / "sample_distances.json").exists())
+            self.assertTrue((output_path / "data" / "sample_pca.json").exists())
+            self.assertTrue((output_path / "data" / "count_matrix_heatmap.json").exists())
             self.assertTrue((output_path / "css" / "styles.css").exists())
             self.assertTrue((output_path / "js" / "linked_plots.js").exists())
+            self.assertTrue((output_path / "js" / "sample_distances.js").exists())
             self.assertTrue((output_path / "vega" / "volcano.json").exists())
             self.assertTrue((output_path / "vega" / "ma.json").exists())
+            self.assertTrue(
+                (output_path / "vega" / "sample_distance_heatmap.json").exists()
+            )
+            self.assertTrue((output_path / "vega" / "sample_pca.json").exists())
+            self.assertTrue((output_path / "vega" / "count_matrix_heatmap.json").exists())
 
             report_payload = json.loads(
                 (output_path / "data" / "results_table.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            sample_distance_payload = json.loads(
+                (output_path / "data" / "sample_distances.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            sample_pca_payload = json.loads(
+                (output_path / "data" / "sample_pca.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            count_matrix_heatmap_payload = json.loads(
+                (output_path / "data" / "count_matrix_heatmap.json").read_text(
                     encoding="utf-8"
                 )
             )
@@ -312,12 +444,13 @@ class TestVisualizers(TestPluginBase):
         self.assertEqual(captured["output_dir"], temp_dir)
         self.assertEqual(
             [Path(template).name for template in captured["templates"]],
-            ["index.html", "table.html"],
+            ["index.html", "sample_distances.html", "table.html"],
         )
         self.assertEqual(
             captured["context"]["tabs"],
             [
                 {"title": "Overview", "url": "index.html"},
+                {"title": "Sample distances", "url": "sample_distances.html"},
                 {"title": "Results table", "url": "table.html"},
             ],
         )
@@ -331,9 +464,87 @@ class TestVisualizers(TestPluginBase):
         self.assertEqual(
             len(json.loads(captured["context"]["effect_options_json"])), 2
         )
+        self.assertTrue(captured["context"]["include_sample_metadata_file"])
+        self.assertTrue(captured["context"]["has_sample_pca_plot"])
+        self.assertTrue(captured["context"]["has_count_matrix_heatmap"])
         self.assertEqual(report_payload["columns"][0], "feature_id")
         self.assertEqual(len(report_payload["data"]), 6)
         self.assertIn("effect_id", report_payload["columns"])
+        self.assertEqual(len(sample_distance_payload), 4)
+        self.assertEqual(
+            sample_distance_payload[0]["sample_y_label"],
+            "Sample2 | condition=treated | batch=B",
+        )
+        self.assertEqual(
+            json.loads(captured["context"]["sample_distance_order_json"]),
+            ["Sample2", "Sample1"],
+        )
+        self.assertEqual(captured["context"]["sample_distance_sample_count"], 2)
+        self.assertEqual(sample_pca_payload["group_label"], "condition (ref: control)")
+        self.assertEqual(sample_pca_payload["points"][0]["sample_id"], "Sample2")
+        self.assertEqual(
+            sample_pca_payload["percent_variance"],
+            {"PC1": 68.2, "PC2": 21.5},
+        )
+        self.assertEqual(
+            json.loads(captured["context"]["sample_pca_data_path_json"]),
+            "data/sample_pca.json",
+        )
+        self.assertEqual(
+            json.loads(captured["context"]["count_matrix_heatmap_data_path_json"]),
+            "data/count_matrix_heatmap.json",
+        )
+        self.assertEqual(
+            count_matrix_heatmap_payload["feature_order"],
+            ["GG_OTU_2", "GG_OTU_1"],
+        )
+
+    def test_write_visualization_output_skips_sample_distance_tab_without_matrix(self):
+        captured = {}
+
+        def fake_render(templates, output_dir, context):
+            captured["templates"] = templates
+            captured["output_dir"] = output_dir
+            captured["context"] = context
+
+        run_result = self.run_result._replace(
+            sample_distance_matrix=None,
+            sample_distance_order=(),
+            sample_pca_scores=None,
+            sample_pca_percent_variance=(),
+            count_matrix_heatmap=None,
+        )
+
+        with TemporaryDirectory() as temp_dir, patch.object(
+            visualizers, "q2templates", SimpleNamespace(render=fake_render)
+        ):
+            output_path = Path(temp_dir)
+            visualizers._write_visualization_output(
+                output_path,
+                run_result=run_result,
+                alpha=0.05,
+                display_results=self.annotated_multi_results,
+                include_annotated_results=True,
+            )
+
+            self.assertFalse((output_path / "sample_distances.tsv").exists())
+            self.assertFalse((output_path / "sample_metadata.tsv").exists())
+            self.assertFalse((output_path / "count_matrix_heatmap.tsv").exists())
+            self.assertFalse((output_path / "data" / "sample_distances.json").exists())
+            self.assertFalse((output_path / "data" / "sample_pca.json").exists())
+            self.assertFalse((output_path / "data" / "count_matrix_heatmap.json").exists())
+
+        self.assertEqual(
+            [Path(template).name for template in captured["templates"]],
+            ["index.html", "table.html"],
+        )
+        self.assertEqual(
+            captured["context"]["tabs"],
+            [
+                {"title": "Overview", "url": "index.html"},
+                {"title": "Results table", "url": "table.html"},
+            ],
+        )
 
     @patch("q2_deseq2.visualizers._write_visualization_output")
     @patch("q2_deseq2.visualizers._parse_run_results")

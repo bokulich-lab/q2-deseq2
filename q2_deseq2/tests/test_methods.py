@@ -74,8 +74,10 @@ class TestMethods(TestPluginBase):
             normalized_counts=pd.DataFrame(
                 [{"feature_id": "GG_OTU_2", "Sample1": 3.0, "Sample2": 4.0}]
             ),
-            ma_plot_png=b"ma-bytes",
-            volcano_plot_png=b"volcano-bytes",
+            sample_metadata=pd.DataFrame(
+                {"condition": ["control", "treated"]},
+                index=["Sample1", "Sample2"],
+            ),
             test_level="other",
             reference_level="control",
             default_effect_id="contrast::condition::other::control",
@@ -87,6 +89,21 @@ class TestMethods(TestPluginBase):
             selected_effect_specs=(
                 "contrast::condition::other::control",
                 "contrast::condition::treated::control",
+            ),
+            sample_distance_matrix=pd.DataFrame(
+                [[0.0, 1.25], [1.25, 0.0]],
+                index=["Sample1", "Sample2"],
+                columns=["Sample1", "Sample2"],
+            ),
+            sample_distance_order=("Sample2", "Sample1"),
+            sample_pca_scores=pd.DataFrame(
+                {"PC1": [-2.1, 2.1], "PC2": [0.4, -0.4]},
+                index=["Sample1", "Sample2"],
+            ),
+            sample_pca_percent_variance=(68.2, 21.5),
+            count_matrix_heatmap=pd.DataFrame(
+                {"Sample2": [7.5, 5.1], "Sample1": [6.8, 4.6]},
+                index=["GG_OTU_2", "GG_OTU_1"],
             ),
         )
 
@@ -265,7 +282,24 @@ class TestMethods(TestPluginBase):
         self.assertIn("effect_specs <- read_list_file(effect_specs_path)", script)
         self.assertIn("test_kind == \"lrt\"", script)
         self.assertIn("simple_dds_cache <- list()", script)
-        self.assertIn("plotMA(default_res, alpha = alpha", script)
+        self.assertIn("sample_distances_path <- get_arg(\"--sample-distances\")", script)
+        self.assertIn(
+            "sample_distance_order_path <- get_arg(\"--sample-distance-order\")",
+            script,
+        )
+        self.assertIn("sample_pca_path <- get_arg(\"--sample-pca\")", script)
+        self.assertIn(
+            "count_matrix_heatmap_path <- get_arg(\"--count-matrix-heatmap\")",
+            script,
+        )
+        self.assertIn("vsd <- vst(dds, blind = FALSE", script)
+        self.assertIn("sample_hclust <- hclust(sample_dists)", script)
+        self.assertIn("sample_pca_df <- data.frame(", script)
+        self.assertIn("count_matrix_heatmap_df <- as.data.frame(", script)
+        self.assertIn("top_heatmap_n <- min(100, nrow(dds))", script)
+        self.assertNotIn("--ma-plot", script)
+        self.assertNotIn("--volcano-plot", script)
+        self.assertNotIn("plotMA(", script)
         self.assertNotIn("--test-level", script)
         self.assertTrue(script.endswith("\n"))
 
@@ -273,8 +307,14 @@ class TestMethods(TestPluginBase):
     def test_run_deseq2_executes_command_and_reads_outputs(self, run_mock):
         expected_results = self.sample_run_result.results
         expected_normalized_counts = self.sample_run_result.normalized_counts
-        expected_ma_plot = self.sample_run_result.ma_plot_png
-        expected_volcano_plot = self.sample_run_result.volcano_plot_png
+        expected_sample_distances = self.sample_run_result.sample_distance_matrix
+        expected_sample_distance_order = self.sample_run_result.sample_distance_order
+        expected_sample_pca_scores = self.sample_run_result.sample_pca_scores
+        expected_sample_pca_percent_variance = (
+            self.sample_run_result.sample_pca_percent_variance
+        )
+        expected_count_matrix_heatmap = self.sample_run_result.count_matrix_heatmap
+        captured = {}
 
         def _fake_run(cmd, check, capture_output, text):
             self.assertTrue(check)
@@ -286,15 +326,23 @@ class TestMethods(TestPluginBase):
             coldata_fp = Path(cmd[cmd.index("--coldata") + 1])
             results_fp = Path(cmd[cmd.index("--results") + 1])
             normalized_counts_fp = Path(cmd[cmd.index("--normalized-counts") + 1])
+            sample_distances_fp = Path(cmd[cmd.index("--sample-distances") + 1])
+            sample_distance_order_fp = Path(
+                cmd[cmd.index("--sample-distance-order") + 1]
+            )
+            sample_pca_fp = Path(cmd[cmd.index("--sample-pca") + 1])
+            count_matrix_heatmap_fp = Path(cmd[cmd.index("--count-matrix-heatmap") + 1])
             summary_fp = Path(cmd[cmd.index("--summary") + 1])
             ma_plot_fp = Path(cmd[cmd.index("--ma-plot") + 1])
-            volcano_plot_fp = Path(cmd[cmd.index("--volcano-plot") + 1])
             results_names_fp = Path(cmd[cmd.index("--results-names") + 1])
             reference_levels_fp = Path(cmd[cmd.index("--reference-levels") + 1])
             effect_specs_fp = Path(cmd[cmd.index("--effect-specs") + 1])
 
             self.assertTrue(counts_fp.exists())
             self.assertTrue(coldata_fp.exists())
+            self.assertEqual(ma_plot_fp.name, "ma_plot.png")
+            captured["sample_metadata"] = pd.read_csv(coldata_fp, sep="\t", index_col=0)
+            captured["sample_metadata"].index.name = None
             self.assertEqual(cmd[cmd.index("--fixed-effects-formula") + 1], "condition")
             self.assertEqual(
                 reference_levels_fp.read_text(encoding="utf-8"),
@@ -306,13 +354,27 @@ class TestMethods(TestPluginBase):
             expected_normalized_counts.to_csv(
                 normalized_counts_fp, sep="\t", index=False
             )
+            expected_sample_distances.to_csv(
+                sample_distances_fp, sep="\t", index_label="sample_id"
+            )
+            sample_distance_order_fp.write_text(
+                "\n".join(expected_sample_distance_order) + "\n",
+                encoding="utf-8",
+            )
+            expected_sample_pca_scores.assign(
+                percent_variance_pc1=expected_sample_pca_percent_variance[0],
+                percent_variance_pc2=expected_sample_pca_percent_variance[1],
+            ).to_csv(sample_pca_fp, sep="\t", index_label="sample_id")
+            expected_count_matrix_heatmap.to_csv(
+                count_matrix_heatmap_fp,
+                sep="\t",
+                index_label="feature_id",
+            )
             results_names_fp.write_text(
                 "Intercept\ncondition_treated_vs_control\n",
                 encoding="utf-8",
             )
             summary_fp.write_text("summary\n", encoding="utf-8")
-            ma_plot_fp.write_bytes(expected_ma_plot)
-            volcano_plot_fp.write_bytes(expected_volcano_plot)
             return Mock(returncode=0)
 
         run_mock.side_effect = _fake_run
@@ -334,11 +396,21 @@ class TestMethods(TestPluginBase):
         self.assertIn("mean", command)
         self.assertIn("--alpha", command)
         self.assertIn("0.01", command)
+        self.assertIn("--ma-plot", command)
+        self.assertNotIn("--volcano-plot", command)
         self.assertIn("false", command)
         assert_frame_equal(observed.results, expected_results)
         assert_frame_equal(observed.normalized_counts, expected_normalized_counts)
-        self.assertEqual(observed.ma_plot_png, expected_ma_plot)
-        self.assertEqual(observed.volcano_plot_png, expected_volcano_plot)
+        captured["sample_metadata"].index.name = observed.sample_metadata.index.name
+        assert_frame_equal(observed.sample_metadata, captured["sample_metadata"])
+        assert_frame_equal(observed.sample_distance_matrix, expected_sample_distances)
+        self.assertEqual(observed.sample_distance_order, expected_sample_distance_order)
+        assert_frame_equal(observed.sample_pca_scores, expected_sample_pca_scores)
+        self.assertEqual(
+            observed.sample_pca_percent_variance,
+            expected_sample_pca_percent_variance,
+        )
+        assert_frame_equal(observed.count_matrix_heatmap, expected_count_matrix_heatmap)
         self.assertEqual(
             observed.default_effect_id, "contrast::condition::other::control"
         )
@@ -367,15 +439,33 @@ class TestMethods(TestPluginBase):
             ]
         )
         expected_normalized_counts = self.sample_run_result.normalized_counts
+        expected_sample_distances = self.sample_run_result.sample_distance_matrix
+        expected_sample_distance_order = self.sample_run_result.sample_distance_order
+        expected_sample_pca_scores = self.sample_run_result.sample_pca_scores
+        expected_sample_pca_percent_variance = (
+            self.sample_run_result.sample_pca_percent_variance
+        )
+        expected_count_matrix_heatmap = self.sample_run_result.count_matrix_heatmap
+        captured = {}
 
         def _fake_run(cmd, check, capture_output, text):
+            coldata_fp = Path(cmd[cmd.index("--coldata") + 1])
             results_fp = Path(cmd[cmd.index("--results") + 1])
             normalized_counts_fp = Path(cmd[cmd.index("--normalized-counts") + 1])
+            sample_distances_fp = Path(cmd[cmd.index("--sample-distances") + 1])
+            sample_distance_order_fp = Path(
+                cmd[cmd.index("--sample-distance-order") + 1]
+            )
+            sample_pca_fp = Path(cmd[cmd.index("--sample-pca") + 1])
+            count_matrix_heatmap_fp = Path(cmd[cmd.index("--count-matrix-heatmap") + 1])
+            summary_fp = Path(cmd[cmd.index("--summary") + 1])
+            ma_plot_fp = Path(cmd[cmd.index("--ma-plot") + 1])
             results_names_fp = Path(cmd[cmd.index("--results-names") + 1])
             reference_levels_fp = Path(cmd[cmd.index("--reference-levels") + 1])
             effect_specs_fp = Path(cmd[cmd.index("--effect-specs") + 1])
-            ma_plot_fp = Path(cmd[cmd.index("--ma-plot") + 1])
-            volcano_plot_fp = Path(cmd[cmd.index("--volcano-plot") + 1])
+            self.assertEqual(ma_plot_fp.name, "ma_plot.png")
+            captured["sample_metadata"] = pd.read_csv(coldata_fp, sep="\t", index_col=0)
+            captured["sample_metadata"].index.name = None
 
             self.assertEqual(
                 cmd[cmd.index("--fixed-effects-formula") + 1],
@@ -395,12 +485,27 @@ class TestMethods(TestPluginBase):
             expected_normalized_counts.to_csv(
                 normalized_counts_fp, sep="\t", index=False
             )
+            expected_sample_distances.to_csv(
+                sample_distances_fp, sep="\t", index_label="sample_id"
+            )
+            sample_distance_order_fp.write_text(
+                "\n".join(expected_sample_distance_order) + "\n",
+                encoding="utf-8",
+            )
+            expected_sample_pca_scores.assign(
+                percent_variance_pc1=expected_sample_pca_percent_variance[0],
+                percent_variance_pc2=expected_sample_pca_percent_variance[1],
+            ).to_csv(sample_pca_fp, sep="\t", index_label="sample_id")
+            expected_count_matrix_heatmap.to_csv(
+                count_matrix_heatmap_fp,
+                sep="\t",
+                index_label="feature_id",
+            )
             results_names_fp.write_text(
                 "Intercept\ngenotype_nonKO_vs_KO\ntreatment_compoundA_vs_dmso\n",
                 encoding="utf-8",
             )
-            ma_plot_fp.write_bytes(b"ma-bytes")
-            volcano_plot_fp.write_bytes(b"volcano-bytes")
+            summary_fp.write_text("summary\n", encoding="utf-8")
             return Mock(returncode=0)
 
         run_mock.side_effect = _fake_run
@@ -418,6 +523,16 @@ class TestMethods(TestPluginBase):
 
         assert_frame_equal(observed.results, expected_results)
         assert_frame_equal(observed.normalized_counts, expected_normalized_counts)
+        captured["sample_metadata"].index.name = observed.sample_metadata.index.name
+        assert_frame_equal(observed.sample_metadata, captured["sample_metadata"])
+        assert_frame_equal(observed.sample_distance_matrix, expected_sample_distances)
+        self.assertEqual(observed.sample_distance_order, expected_sample_distance_order)
+        assert_frame_equal(observed.sample_pca_scores, expected_sample_pca_scores)
+        self.assertEqual(
+            observed.sample_pca_percent_variance,
+            expected_sample_pca_percent_variance,
+        )
+        assert_frame_equal(observed.count_matrix_heatmap, expected_count_matrix_heatmap)
         self.assertEqual(
             observed.default_effect_id,
             "simple::genotype::nonKO::KO|within::treatment::compoundA",
@@ -429,6 +544,8 @@ class TestMethods(TestPluginBase):
             observed.available_results_names,
             ("Intercept", "genotype_nonKO_vs_KO", "treatment_compoundA_vs_dmso"),
         )
+        self.assertIn("--ma-plot", run_mock.call_args.args[0])
+        self.assertNotIn("--volcano-plot", run_mock.call_args.args[0])
 
     @patch("q2_deseq2.methods.run")
     def test_run_deseq2_raises_runtime_error_on_failure(self, run_mock):

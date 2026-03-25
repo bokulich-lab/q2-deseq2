@@ -1,3 +1,7 @@
+import shutil
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
 import pandas as pd
 from pandas.testing import assert_frame_equal
 from q2_types.feature_data import FeatureData
@@ -116,6 +120,39 @@ class TestFormats(TestPluginBase):
 
         format.validate("min")
         format.validate("max")
+
+    def test_deseq2_run_directory_format_accepts_extended_run_outputs(self):
+        source = Path(self.get_data_path("deseq2-run-valid"))
+
+        with TemporaryDirectory() as temp_dir:
+            workdir = Path(temp_dir) / "deseq2-run-valid"
+            shutil.copytree(source, workdir)
+            (workdir / "sample_distances.tsv").write_text(
+                "sample_id\tSample1\tSample2\n"
+                "Sample1\t0.0\t1.5\n"
+                "Sample2\t1.5\t0.0\n",
+                encoding="utf-8",
+            )
+            (workdir / "sample_distance_order.txt").write_text(
+                "Sample2\nSample1\n", encoding="utf-8"
+            )
+
+            format = DESeq2RunDirectoryFormat(str(workdir), mode="r")
+            format.validate("min")
+            format.validate("max")
+
+    def test_deseq2_run_directory_format_rejects_removed_png_outputs(self):
+        source = Path(self.get_data_path("deseq2-run-valid"))
+
+        with TemporaryDirectory() as temp_dir:
+            workdir = Path(temp_dir) / "deseq2-run-valid"
+            shutil.copytree(source, workdir)
+            (workdir / "ma_plot.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+            format = DESeq2RunDirectoryFormat(str(workdir), mode="r")
+
+            with self.assertRaisesRegex(ValidationError, "Unrecognized file"):
+                format.validate()
 
     def test_deseq2_run_directory_format_rejects_invalid_metadata(self):
         filepath = self.get_data_path("deseq2-run-invalid-metadata")

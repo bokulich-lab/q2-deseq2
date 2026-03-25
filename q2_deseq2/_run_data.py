@@ -20,8 +20,6 @@ from q2_deseq2.types import DESeq2RunDirectoryFormat
 class DESeq2RunResult(NamedTuple):
     results: pd.DataFrame
     normalized_counts: pd.DataFrame
-    ma_plot_png: bytes
-    volcano_plot_png: bytes
     test_level: str = ""
     reference_level: str = ""
     default_effect_id: str = ""
@@ -93,8 +91,6 @@ def _write_run_result(path: Path, run_result: DESeq2RunResult, alpha: float) -> 
             "\n".join(run_result.sample_distance_order) + "\n",
             encoding="utf-8",
         )
-    (path / "ma_plot.png").write_bytes(run_result.ma_plot_png)
-    (path / "volcano_plot.png").write_bytes(run_result.volcano_plot_png)
     (path / "metadata.json").write_text(
         json.dumps(
             {
@@ -181,8 +177,6 @@ def _parse_run_results(
         normalized_counts=pd.read_csv(
             run_data_path / "normalized_counts.tsv", sep="\t"
         ),
-        ma_plot_png=(run_data_path / "ma_plot.png").read_bytes(),
-        volcano_plot_png=(run_data_path / "volcano_plot.png").read_bytes(),
         test_level=test_level,
         reference_level=reference_level,
         default_effect_id=default_effect_id,

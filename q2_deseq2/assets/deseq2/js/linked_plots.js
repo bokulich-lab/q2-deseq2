@@ -12,8 +12,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const effectLabelNodes = document.querySelectorAll("[data-selected-effect]");
   const volcanoErrorNode = document.getElementById("volcano-error");
   const maErrorNode = document.getElementById("ma-error");
-  const volcanoFallbackNode = document.getElementById("volcano-fallback");
-  const maFallbackNode = document.getElementById("ma-fallback");
   const alphaInput = document.getElementById("alpha-cutoff-input");
   const lfcInput = document.getElementById("lfc-cutoff-input");
   const resetButton = document.getElementById("plot-controls-reset");
@@ -306,13 +304,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         scaleFactor: { png: 2, svg: 1 },
       }),
     ]);
-
-    if (volcanoFallbackNode) {
-      volcanoFallbackNode.hidden = true;
-    }
-    if (maFallbackNode) {
-      maFallbackNode.hidden = true;
-    }
 
     const views = [
       {

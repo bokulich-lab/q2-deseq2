@@ -423,8 +423,6 @@ def _write_r_script(script_fp: Path) -> None:
         sample_distances_path <- get_arg("--sample-distances")
         sample_distance_order_path <- get_arg("--sample-distance-order")
         summary_path <- get_arg("--summary")
-        ma_plot_path <- get_arg("--ma-plot")
-        volcano_plot_path <- get_arg("--volcano-plot")
         results_names_path <- get_arg("--results-names")
         reference_levels_path <- get_arg("--reference-levels")
         effect_specs_path <- get_arg("--effect-specs")
@@ -495,9 +493,6 @@ def _write_r_script(script_fp: Path) -> None:
 
         result_frames <- list()
         summary_lines <- character()
-        default_res <- NULL
-        default_res_df <- NULL
-        default_effect_label <- NULL
 
         if (test_kind == "lrt") {
           effect_id <- sprintf("lrt::%s::vs::%s", fixed_effects_formula, reduced_formula)
@@ -522,9 +517,6 @@ def _write_r_script(script_fp: Path) -> None:
             capture.output(summary(res)),
             ""
           )
-          default_res <- res
-          default_res_df <- res_df
-          default_effect_label <- effect_label
         } else {
           effect_specs <- read_list_file(effect_specs_path)
           if (length(effect_specs) == 0) {
@@ -666,12 +658,6 @@ def _write_r_script(script_fp: Path) -> None:
               capture.output(summary(res)),
               ""
             )
-
-            if (is.null(default_res)) {
-              default_res <- res
-              default_res_df <- res_df
-              default_effect_label <- res_df$effect_label[[1]]
-            }
           }
         }
 
@@ -723,36 +709,6 @@ def _write_r_script(script_fp: Path) -> None:
           summary_lines <- "No effects were generated."
         }
         writeLines(summary_lines, con = summary_path)
-
-        plot_label <- default_effect_label
-        png(filename = ma_plot_path, width = 1200, height = 900)
-        plotMA(default_res, alpha = alpha, main = paste("DESeq2 MA plot:", plot_label))
-        dev.off()
-
-        y_values <- -log10(default_res_df$padj)
-        finite_idx <- is.finite(default_res_df$log2FoldChange) & is.finite(y_values)
-
-        png(filename = volcano_plot_path, width = 1200, height = 900)
-        if (any(finite_idx)) {
-          plot(
-            default_res_df$log2FoldChange[finite_idx],
-            y_values[finite_idx],
-            pch = 20,
-            col = rgb(0.2, 0.4, 0.7, 0.65),
-            xlab = "log2 fold change",
-            ylab = "-log10 adjusted p-value",
-            main = paste("DESeq2 Volcano Plot:", plot_label)
-          )
-          abline(v = 0, col = "#1F77B4", lty = 2)
-          if (alpha > 0 && alpha < 1) {
-            abline(h = -log10(alpha), col = "#D62728", lty = 3)
-          }
-        } else {
-          plot.new()
-          title(main = paste("DESeq2 Volcano Plot:", plot_label))
-          text(0.5, 0.5, "No finite points available for volcano plot.")
-        }
-        dev.off()
         """
     ).strip()
     script_fp.write_text(script + "\n", encoding="utf-8")
@@ -825,8 +781,6 @@ def _run_deseq2_with_frames(
         sample_distances_fp = temp_path / "sample_distances.tsv"
         sample_distance_order_fp = temp_path / "sample_distance_order.txt"
         summary_fp = temp_path / "deseq2_summary.txt"
-        ma_plot_fp = temp_path / "ma_plot.png"
-        volcano_plot_fp = temp_path / "volcano_plot.png"
         results_names_fp = temp_path / "results_names.txt"
         reference_levels_fp = temp_path / "reference_levels.txt"
         effect_specs_fp = temp_path / "effect_specs.txt"
@@ -855,10 +809,6 @@ def _run_deseq2_with_frames(
             str(sample_distance_order_fp),
             "--summary",
             str(summary_fp),
-            "--ma-plot",
-            str(ma_plot_fp),
-            "--volcano-plot",
-            str(volcano_plot_fp),
             "--results-names",
             str(results_names_fp),
             "--reference-levels",
@@ -894,8 +844,6 @@ def _run_deseq2_with_frames(
             "normalized_counts.tsv": normalized_counts_fp,
             "sample_distances.tsv": sample_distances_fp,
             "sample_distance_order.txt": sample_distance_order_fp,
-            "ma_plot.png": ma_plot_fp,
-            "volcano_plot.png": volcano_plot_fp,
             "results_names.txt": results_names_fp,
         }
         for expected_name, path in expected_outputs.items():
@@ -927,8 +875,6 @@ def _run_deseq2_with_frames(
         return DESeq2RunResult(
             results=results_df,
             normalized_counts=normalized_counts_df,
-            ma_plot_png=ma_plot_fp.read_bytes(),
-            volcano_plot_png=volcano_plot_fp.read_bytes(),
             test_level=legacy_test_level or _first_value_from_column(results_df, "test_level"),
             reference_level=legacy_reference_level
             or _first_value_from_column(results_df, "reference_level"),

@@ -488,8 +488,6 @@ def _write_visualization_output(
     run_result.normalized_counts.to_csv(
         output_path / "normalized_counts.tsv", sep="\t", index=False
     )
-    (output_path / "ma_plot.png").write_bytes(run_result.ma_plot_png)
-    (output_path / "volcano_plot.png").write_bytes(run_result.volcano_plot_png)
     if run_result.sample_distance_matrix is not None:
         run_result.sample_distance_matrix.to_csv(
             output_path / "sample_distances.tsv",

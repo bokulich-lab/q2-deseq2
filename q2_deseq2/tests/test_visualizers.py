@@ -119,8 +119,6 @@ class TestVisualizers(TestPluginBase):
         self.run_result = DESeq2RunResult(
             results=self.multi_results,
             normalized_counts=self.normalized_counts,
-            ma_plot_png=b"ma-plot",
-            volcano_plot_png=b"volcano-plot",
             test_level="other",
             reference_level="control",
             default_effect_id="contrast::condition::other::control",
@@ -319,8 +317,8 @@ class TestVisualizers(TestPluginBase):
             self.assertTrue((output_path / "deseq2_results_annotated.tsv").exists())
             self.assertTrue((output_path / "normalized_counts.tsv").exists())
             self.assertTrue((output_path / "sample_distances.tsv").exists())
-            self.assertTrue((output_path / "ma_plot.png").exists())
-            self.assertTrue((output_path / "volcano_plot.png").exists())
+            self.assertFalse((output_path / "ma_plot.png").exists())
+            self.assertFalse((output_path / "volcano_plot.png").exists())
             self.assertTrue((output_path / "data" / "results_table.json").exists())
             self.assertTrue((output_path / "data" / "sample_distances.json").exists())
             self.assertTrue((output_path / "css" / "styles.css").exists())

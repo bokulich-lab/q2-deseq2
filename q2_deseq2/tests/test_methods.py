@@ -74,8 +74,6 @@ class TestMethods(TestPluginBase):
             normalized_counts=pd.DataFrame(
                 [{"feature_id": "GG_OTU_2", "Sample1": 3.0, "Sample2": 4.0}]
             ),
-            ma_plot_png=b"ma-bytes",
-            volcano_plot_png=b"volcano-bytes",
             test_level="other",
             reference_level="control",
             default_effect_id="contrast::condition::other::control",
@@ -278,7 +276,9 @@ class TestMethods(TestPluginBase):
         )
         self.assertIn("vsd <- vst(dds, blind = FALSE", script)
         self.assertIn("sample_hclust <- hclust(sample_dists)", script)
-        self.assertIn("plotMA(default_res, alpha = alpha", script)
+        self.assertNotIn("--ma-plot", script)
+        self.assertNotIn("--volcano-plot", script)
+        self.assertNotIn("plotMA(", script)
         self.assertNotIn("--test-level", script)
         self.assertTrue(script.endswith("\n"))
 
@@ -288,8 +288,6 @@ class TestMethods(TestPluginBase):
         expected_normalized_counts = self.sample_run_result.normalized_counts
         expected_sample_distances = self.sample_run_result.sample_distance_matrix
         expected_sample_distance_order = self.sample_run_result.sample_distance_order
-        expected_ma_plot = self.sample_run_result.ma_plot_png
-        expected_volcano_plot = self.sample_run_result.volcano_plot_png
 
         def _fake_run(cmd, check, capture_output, text):
             self.assertTrue(check)
@@ -306,8 +304,6 @@ class TestMethods(TestPluginBase):
                 cmd[cmd.index("--sample-distance-order") + 1]
             )
             summary_fp = Path(cmd[cmd.index("--summary") + 1])
-            ma_plot_fp = Path(cmd[cmd.index("--ma-plot") + 1])
-            volcano_plot_fp = Path(cmd[cmd.index("--volcano-plot") + 1])
             results_names_fp = Path(cmd[cmd.index("--results-names") + 1])
             reference_levels_fp = Path(cmd[cmd.index("--reference-levels") + 1])
             effect_specs_fp = Path(cmd[cmd.index("--effect-specs") + 1])
@@ -337,8 +333,6 @@ class TestMethods(TestPluginBase):
                 encoding="utf-8",
             )
             summary_fp.write_text("summary\n", encoding="utf-8")
-            ma_plot_fp.write_bytes(expected_ma_plot)
-            volcano_plot_fp.write_bytes(expected_volcano_plot)
             return Mock(returncode=0)
 
         run_mock.side_effect = _fake_run
@@ -360,13 +354,13 @@ class TestMethods(TestPluginBase):
         self.assertIn("mean", command)
         self.assertIn("--alpha", command)
         self.assertIn("0.01", command)
+        self.assertNotIn("--ma-plot", command)
+        self.assertNotIn("--volcano-plot", command)
         self.assertIn("false", command)
         assert_frame_equal(observed.results, expected_results)
         assert_frame_equal(observed.normalized_counts, expected_normalized_counts)
         assert_frame_equal(observed.sample_distance_matrix, expected_sample_distances)
         self.assertEqual(observed.sample_distance_order, expected_sample_distance_order)
-        self.assertEqual(observed.ma_plot_png, expected_ma_plot)
-        self.assertEqual(observed.volcano_plot_png, expected_volcano_plot)
         self.assertEqual(
             observed.default_effect_id, "contrast::condition::other::control"
         )
@@ -397,8 +391,6 @@ class TestMethods(TestPluginBase):
         expected_normalized_counts = self.sample_run_result.normalized_counts
         expected_sample_distances = self.sample_run_result.sample_distance_matrix
         expected_sample_distance_order = self.sample_run_result.sample_distance_order
-        expected_ma_plot = self.sample_run_result.ma_plot_png
-        expected_volcano_plot = self.sample_run_result.volcano_plot_png
 
         def _fake_run(cmd, check, capture_output, text):
             results_fp = Path(cmd[cmd.index("--results") + 1])
@@ -408,8 +400,6 @@ class TestMethods(TestPluginBase):
                 cmd[cmd.index("--sample-distance-order") + 1]
             )
             summary_fp = Path(cmd[cmd.index("--summary") + 1])
-            ma_plot_fp = Path(cmd[cmd.index("--ma-plot") + 1])
-            volcano_plot_fp = Path(cmd[cmd.index("--volcano-plot") + 1])
             results_names_fp = Path(cmd[cmd.index("--results-names") + 1])
             reference_levels_fp = Path(cmd[cmd.index("--reference-levels") + 1])
             effect_specs_fp = Path(cmd[cmd.index("--effect-specs") + 1])
@@ -444,8 +434,6 @@ class TestMethods(TestPluginBase):
                 encoding="utf-8",
             )
             summary_fp.write_text("summary\n", encoding="utf-8")
-            ma_plot_fp.write_bytes(expected_ma_plot)
-            volcano_plot_fp.write_bytes(expected_volcano_plot)
             return Mock(returncode=0)
 
         run_mock.side_effect = _fake_run
@@ -465,8 +453,6 @@ class TestMethods(TestPluginBase):
         assert_frame_equal(observed.normalized_counts, expected_normalized_counts)
         assert_frame_equal(observed.sample_distance_matrix, expected_sample_distances)
         self.assertEqual(observed.sample_distance_order, expected_sample_distance_order)
-        self.assertEqual(observed.ma_plot_png, expected_ma_plot)
-        self.assertEqual(observed.volcano_plot_png, expected_volcano_plot)
         self.assertEqual(
             observed.default_effect_id,
             "simple::genotype::nonKO::KO|within::treatment::compoundA",
@@ -478,6 +464,8 @@ class TestMethods(TestPluginBase):
             observed.available_results_names,
             ("Intercept", "genotype_nonKO_vs_KO", "treatment_compoundA_vs_dmso"),
         )
+        self.assertNotIn("--ma-plot", run_mock.call_args.args[0])
+        self.assertNotIn("--volcano-plot", run_mock.call_args.args[0])
 
     @patch("q2_deseq2.methods.run")
     def test_run_deseq2_raises_runtime_error_on_failure(self, run_mock):

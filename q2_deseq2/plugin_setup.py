@@ -27,7 +27,6 @@ from rachis.core.type import Range
 
 from q2_deseq2 import __version__
 from q2_deseq2.types import (
-    DESeq2ImageFormat,
     DESeq2RunDirectoryFormat,
     DESeq2RunMetadataFormat,
     DESeq2StatsDirectoryFormat,
@@ -58,7 +57,6 @@ plugin.register_formats(
     DESeq2StatsFormat,
     DESeq2StatsDirectoryFormat,
     DESeq2RunMetadataFormat,
-    DESeq2ImageFormat,
     DESeq2RunDirectoryFormat,
 )
 plugin.register_artifact_class(

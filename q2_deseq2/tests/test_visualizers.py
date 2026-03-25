@@ -297,10 +297,6 @@ class TestVisualizers(TestPluginBase):
             self.assertTrue((output_path / "deseq2_results.tsv").exists())
             self.assertTrue((output_path / "deseq2_results_annotated.tsv").exists())
             self.assertTrue((output_path / "normalized_counts.tsv").exists())
-            self.assertEqual((output_path / "ma_plot.png").read_bytes(), b"ma-plot")
-            self.assertEqual(
-                (output_path / "volcano_plot.png").read_bytes(), b"volcano-plot"
-            )
             self.assertTrue((output_path / "data" / "results_table.json").exists())
             self.assertTrue((output_path / "css" / "styles.css").exists())
             self.assertTrue((output_path / "js" / "linked_plots.js").exists())

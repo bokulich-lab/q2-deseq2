@@ -8,7 +8,7 @@
     "left": 140,
     "right": 60,
     "top": 10,
-    "bottom": 130
+    "bottom": 156
   },
   "width": 480,
   "height": 480,
@@ -55,7 +55,7 @@
       "orient": "bottom",
       "scale": "x",
       "labelAngle": -90,
-      "labelAlign": "left",
+      "labelAlign": "right",
       "labelBaseline": "middle",
       "labelLimit": 180,
       "labelFontSize": 12

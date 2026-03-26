@@ -134,7 +134,7 @@
 .sample-distance-layout {
   align-items: start;
   display: grid;
-  gap: 4px;
+  gap: 2px;
   grid-template-columns: fit-content(220px) minmax(0, 1fr);
   min-height: 0;
   width: 100%;
@@ -161,7 +161,7 @@
   justify-content: flex-end;
   min-width: 0;
   overflow: hidden;
-  padding-right: 2px;
+  padding-right: 0;
   white-space: nowrap;
 }
 
@@ -246,17 +246,7 @@
 }
 
 .count-matrix-layout {
-  grid-template-columns: fit-content(140px) minmax(0, 1fr);
-}
-
-.count-matrix-row-labels {
-  align-self: start;
-}
-
-.count-matrix-row-labels .sample-distance-row-label {
-  font-size: 12px;
-  justify-content: flex-start;
-  padding-right: 0;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .count-matrix-plot-shell {

@@ -42,7 +42,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     left: 0,
     right: 8,
     top: 8,
-    bottom: 84,
+    bottom: 104,
   };
 
   const countMatrixPadding = {
@@ -358,13 +358,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     labels,
     plotHeight,
     rowHeight,
-    alignToTop = false
+    alignToTop = false,
+    offsetTop = 0
   ) => {
     rowLabelNode.innerHTML = "";
     rowLabelNode.style.gridTemplateRows = `repeat(${labels.length}, ${rowHeight}px)`;
     rowLabelNode.style.paddingTop = alignToTop
-      ? "0px"
-      : `${Math.max(0, (plotHeight - labels.length * rowHeight) / 2)}px`;
+      ? `${Math.max(0, offsetTop)}px`
+      : `${Math.max(0, offsetTop + (plotHeight - labels.length * rowHeight) / 2)}px`;
 
     labels.forEach((label) => {
       const item = document.createElement("div");
@@ -499,9 +500,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (xAxis) {
           xAxis.labelFontSize = sampleOrder.length >= 20 ? 11 : 13;
           xAxis.labelAngle = -90;
-          xAxis.labelAlign = "left";
+          xAxis.labelAlign = "right";
           xAxis.labelBaseline = "middle";
-          xAxis.labelPadding = 6;
+          xAxis.labelPadding = 8;
           xAxis.title = null;
         }
 
@@ -762,15 +763,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     const container = document.getElementById("count-matrix-heatmap-view");
     const plotShell = container ? container.parentElement : null;
     const sampleLabelNode = document.getElementById("count-matrix-sample-labels");
-    const rowLabelNode = document.getElementById("count-matrix-heatmap-row-labels");
     const legendNode = document.getElementById("count-matrix-heatmap-legend");
     const specNode = document.getElementById("vega_count_matrix_heatmap_spec");
     const dataPathNode = document.getElementById("count_matrix_heatmap_data_path");
     const errorNode = document.getElementById("count-matrix-heatmap-error");
 
     if (
-      !container || !plotShell || !sampleLabelNode || !rowLabelNode || !legendNode
-      || !specNode || !dataPathNode
+      !container || !plotShell || !sampleLabelNode || !legendNode || !specNode
+      || !dataPathNode
     ) {
       return;
     }
@@ -885,13 +885,6 @@ document.addEventListener("DOMContentLoaded", async () => {
               })),
           metadataColors,
           plotSize.width
-        );
-        renderSimpleRowLabels(
-          rowLabelNode,
-          featureOrder,
-          plotSize.height,
-          plotSize.rowHeight,
-          true
         );
 
         if (

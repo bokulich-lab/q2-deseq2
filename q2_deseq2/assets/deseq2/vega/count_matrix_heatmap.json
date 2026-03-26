@@ -5,13 +5,13 @@
     "contains": "padding"
   },
   "padding": {
-    "left": 140,
+    "left": 120,
     "right": 60,
     "top": 10,
     "bottom": 130
   },
-  "width": 480,
-  "height": 480,
+  "width": 720,
+  "height": 360,
   "data": [
     {
       "name": "cells",
@@ -40,21 +40,21 @@
       "type": "linear",
       "domain": {
         "data": "cells",
-        "field": "distance"
+        "field": "value"
       },
       "range": {
         "scheme": "blues"
       },
       "reverse": true,
       "nice": true,
-      "zero": true
+      "zero": false
     }
   ],
   "axes": [
     {
       "orient": "bottom",
       "scale": "x",
-      "labelAngle": -90,
+      "labelAngle": 90,
       "labelAlign": "left",
       "labelBaseline": "middle",
       "labelLimit": 180,
@@ -63,7 +63,7 @@
     {
       "orient": "left",
       "scale": "y",
-      "labelLimit": 180,
+      "labelLimit": 240,
       "labelFontSize": 12
     }
   ],
@@ -72,7 +72,7 @@
       "fill": "color",
       "orient": "top",
       "direction": "horizontal",
-      "title": "Sample distance",
+      "title": "VST count",
       "gradientLength": 180,
       "gradientThickness": 12
     }
@@ -86,17 +86,17 @@
       "encode": {
         "enter": {
           "tooltip": {
-            "signal": "{'Sample A': datum.sample_x, 'Sample B': datum.sample_y, 'Distance': datum.distance == null ? 'NA' : format(datum.distance, '.4f')}"
+            "signal": "{'Feature': datum.feature_id, 'Sample': datum.sample_id, 'VST count': datum.value == null ? 'NA' : format(datum.value, '.4f')}"
           }
         },
         "update": {
           "x": {
             "scale": "x",
-            "field": "sample_x"
+            "field": "sample_id"
           },
           "y": {
             "scale": "y",
-            "field": "sample_y"
+            "field": "feature_id"
           },
           "width": {
             "scale": "x",
@@ -108,7 +108,7 @@
           },
           "fill": {
             "scale": "color",
-            "field": "distance"
+            "field": "value"
           },
           "stroke": {
             "value": "#f8fafc"

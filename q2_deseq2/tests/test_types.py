@@ -148,6 +148,12 @@ class TestFormats(TestPluginBase):
                 "Sample2\t2.1\t-0.4\n",
                 encoding="utf-8",
             )
+            (workdir / "count_matrix_heatmap.tsv").write_text(
+                "feature_id\tSample2\tSample1\n"
+                "GG_OTU_2\t7.5\t6.8\n"
+                "GG_OTU_1\t5.1\t4.6\n",
+                encoding="utf-8",
+            )
 
             format = DESeq2RunDirectoryFormat(str(workdir), mode="r")
             format.validate("min")

@@ -565,6 +565,54 @@ def _prepare_sample_pca_payload(
     return json.dumps(payload).replace("NaN", "null")
 
 
+def _prepare_count_matrix_heatmap_payload(
+    count_matrix_heatmap: pd.DataFrame,
+    sample_metadata: pd.DataFrame | None = None,
+    reference_levels: tuple[str, ...] = (),
+) -> str:
+    matrix = count_matrix_heatmap.copy()
+    matrix.index = matrix.index.map(str)
+    matrix.columns = matrix.columns.map(str)
+    ordered_sample_ids = [str(sample_id) for sample_id in matrix.columns.tolist()]
+    sample_labels, sample_metadata_text = _build_sample_label_map(
+        sample_metadata=sample_metadata,
+        ordered_sample_ids=ordered_sample_ids,
+        reference_levels=reference_levels,
+    )
+
+    records = []
+    for feature_id in matrix.index.tolist():
+        for sample_id in ordered_sample_ids:
+            if sample_id not in matrix.columns:
+                continue
+            records.append(
+                {
+                    "feature_id": feature_id,
+                    "sample_id": sample_id,
+                    "sample_label": sample_labels.get(sample_id, sample_id),
+                    "sample_metadata": sample_metadata_text.get(sample_id, ""),
+                    "value": _value_or_none(matrix.at[feature_id, sample_id]),
+                }
+            )
+
+    samples = [
+        {
+            "sample_id": sample_id,
+            "sample_label": sample_labels.get(sample_id, sample_id),
+            "sample_metadata": sample_metadata_text.get(sample_id, ""),
+        }
+        for sample_id in ordered_sample_ids
+    ]
+
+    payload = {
+        "cells": records,
+        "feature_order": matrix.index.tolist(),
+        "sample_order": ordered_sample_ids,
+        "samples": samples,
+    }
+    return json.dumps(payload).replace("NaN", "null")
+
+
 def _copy_report_assets(output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     for folder in ["css", "js", "vega"]:
@@ -587,6 +635,7 @@ def _render_report(
     reference_levels: tuple[str, ...] = (),
     sample_pca_scores: pd.DataFrame | None = None,
     sample_pca_percent_variance: tuple[float, float] = (),
+    count_matrix_heatmap: pd.DataFrame | None = None,
 ) -> None:
     if q2templates is None:
         raise ImportError("q2templates is required to render the DESeq2 visualization.")
@@ -607,6 +656,9 @@ def _render_report(
         sample_distance_matrix is not None and not sample_distance_matrix.empty
     )
     has_sample_pca_plot = sample_pca_scores is not None and not sample_pca_scores.empty
+    has_count_matrix_heatmap = (
+        count_matrix_heatmap is not None and not count_matrix_heatmap.empty
+    )
     ordered_sample_ids = []
     if has_sample_distance_heatmap:
         ordered_sample_ids = _resolve_sample_distance_order(
@@ -632,6 +684,15 @@ def _render_report(
             ),
             encoding="utf-8",
         )
+    if has_count_matrix_heatmap:
+        (data_dir / "count_matrix_heatmap.json").write_text(
+            _prepare_count_matrix_heatmap_payload(
+                count_matrix_heatmap,
+                sample_metadata=sample_metadata,
+                reference_levels=reference_levels,
+            ),
+            encoding="utf-8",
+        )
 
     volcano_spec = _load_vega_spec("volcano")
     volcano_spec["signals"][0]["value"] = alpha
@@ -643,6 +704,9 @@ def _render_report(
     sample_pca_spec = None
     if has_sample_pca_plot:
         sample_pca_spec = _load_vega_spec("sample_pca")
+    count_matrix_heatmap_spec = None
+    if has_count_matrix_heatmap:
+        count_matrix_heatmap_spec = _load_vega_spec("count_matrix_heatmap")
     effect_options, default_effect_id, default_effect_label = _collect_effect_options(
         report_results, default_effect_id
     )
@@ -676,6 +740,7 @@ def _render_report(
         "include_annotated_results_file": include_annotated_results_file,
         "has_sample_distance_heatmap": has_sample_distance_heatmap,
         "has_sample_pca_plot": has_sample_pca_plot,
+        "has_count_matrix_heatmap": has_count_matrix_heatmap,
         "include_sample_metadata_file": sample_metadata is not None
         and not sample_metadata.empty,
     }
@@ -689,6 +754,14 @@ def _render_report(
     if has_sample_pca_plot:
         context["vega_sample_pca_spec"] = json.dumps(sample_pca_spec)
         context["sample_pca_data_path_json"] = json.dumps("data/sample_pca.json")
+    if has_count_matrix_heatmap:
+        context["vega_count_matrix_heatmap_spec"] = json.dumps(
+            count_matrix_heatmap_spec
+        )
+        context["count_matrix_heatmap_data_path_json"] = json.dumps(
+            "data/count_matrix_heatmap.json"
+        )
+        context["count_matrix_heatmap_feature_count"] = len(count_matrix_heatmap.index)
     q2templates.render(templates, str(output_dir), context=context)
 
 
@@ -725,6 +798,15 @@ def _write_visualization_output(
                 sep="\t",
                 index_label="sample_id",
             )
+    if run_result.count_matrix_heatmap is not None and not run_result.count_matrix_heatmap.empty:
+        count_matrix_heatmap = run_result.count_matrix_heatmap.copy()
+        count_matrix_heatmap.index = count_matrix_heatmap.index.map(str)
+        count_matrix_heatmap.columns = count_matrix_heatmap.columns.map(str)
+        count_matrix_heatmap.to_csv(
+            output_path / "count_matrix_heatmap.tsv",
+            sep="\t",
+            index_label="feature_id",
+        )
 
     _render_report(
         output_path,
@@ -740,6 +822,7 @@ def _write_visualization_output(
         reference_levels=run_result.reference_levels,
         sample_pca_scores=run_result.sample_pca_scores,
         sample_pca_percent_variance=run_result.sample_pca_percent_variance,
+        count_matrix_heatmap=run_result.count_matrix_heatmap,
     )
 
 

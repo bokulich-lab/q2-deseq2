@@ -183,6 +183,37 @@ class DESeq2SamplePCAFormat(model.TextFileFormat):
                     )
 
 
+class DESeq2CountMatrixHeatmapFormat(model.TextFileFormat):
+    def _validate_(self, level):
+        record_limit = None if level == "max" else 5
+
+        with self.open() as fh:
+            reader = csv.reader(fh, delimiter="\t")
+            try:
+                header = next(reader)
+            except StopIteration as exc:
+                raise ValidationError(
+                    "DESeq2 count-matrix heatmap file is empty."
+                ) from exc
+
+            if not header or header[0] != "feature_id":
+                raise ValidationError(
+                    'DESeq2 count-matrix heatmap table must start with a "feature_id" header column.'
+                )
+
+            for line_no, row in enumerate(reader, start=2):
+                if record_limit is not None and line_no > (record_limit + 1):
+                    break
+
+                if not row:
+                    continue
+
+                if len(row) != len(header):
+                    raise ValidationError(
+                        f"Line {line_no} has {len(row)} fields, expected {len(header)}."
+                    )
+
+
 class DESeq2RunDirectoryFormat(model.DirectoryFormat):
     results = model.File("deseq2_results.tsv", format=DESeq2StatsFormat)
     normalized_counts = model.File("normalized_counts.tsv", format=DESeq2StatsFormat)
@@ -198,4 +229,9 @@ class DESeq2RunDirectoryFormat(model.DirectoryFormat):
     )
     sample_pca = model.File(
         "sample_pca.tsv", format=DESeq2SamplePCAFormat, optional=True
+    )
+    count_matrix_heatmap = model.File(
+        "count_matrix_heatmap.tsv",
+        format=DESeq2CountMatrixHeatmapFormat,
+        optional=True,
     )

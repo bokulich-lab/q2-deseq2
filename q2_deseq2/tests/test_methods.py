@@ -101,6 +101,10 @@ class TestMethods(TestPluginBase):
                 index=["Sample1", "Sample2"],
             ),
             sample_pca_percent_variance=(68.2, 21.5),
+            count_matrix_heatmap=pd.DataFrame(
+                {"Sample2": [7.5, 5.1], "Sample1": [6.8, 4.6]},
+                index=["GG_OTU_2", "GG_OTU_1"],
+            ),
         )
 
     def test_prepare_inputs_infers_reference_for_two_level_metadata(self):
@@ -284,9 +288,15 @@ class TestMethods(TestPluginBase):
             script,
         )
         self.assertIn("sample_pca_path <- get_arg(\"--sample-pca\")", script)
+        self.assertIn(
+            "count_matrix_heatmap_path <- get_arg(\"--count-matrix-heatmap\")",
+            script,
+        )
         self.assertIn("vsd <- vst(dds, blind = FALSE", script)
         self.assertIn("sample_hclust <- hclust(sample_dists)", script)
         self.assertIn("sample_pca_df <- data.frame(", script)
+        self.assertIn("count_matrix_heatmap_df <- as.data.frame(", script)
+        self.assertIn("top_heatmap_n <- min(100, nrow(dds))", script)
         self.assertNotIn("--ma-plot", script)
         self.assertNotIn("--volcano-plot", script)
         self.assertNotIn("plotMA(", script)
@@ -303,6 +313,7 @@ class TestMethods(TestPluginBase):
         expected_sample_pca_percent_variance = (
             self.sample_run_result.sample_pca_percent_variance
         )
+        expected_count_matrix_heatmap = self.sample_run_result.count_matrix_heatmap
         captured = {}
 
         def _fake_run(cmd, check, capture_output, text):
@@ -320,6 +331,7 @@ class TestMethods(TestPluginBase):
                 cmd[cmd.index("--sample-distance-order") + 1]
             )
             sample_pca_fp = Path(cmd[cmd.index("--sample-pca") + 1])
+            count_matrix_heatmap_fp = Path(cmd[cmd.index("--count-matrix-heatmap") + 1])
             summary_fp = Path(cmd[cmd.index("--summary") + 1])
             ma_plot_fp = Path(cmd[cmd.index("--ma-plot") + 1])
             results_names_fp = Path(cmd[cmd.index("--results-names") + 1])
@@ -353,6 +365,11 @@ class TestMethods(TestPluginBase):
                 percent_variance_pc1=expected_sample_pca_percent_variance[0],
                 percent_variance_pc2=expected_sample_pca_percent_variance[1],
             ).to_csv(sample_pca_fp, sep="\t", index_label="sample_id")
+            expected_count_matrix_heatmap.to_csv(
+                count_matrix_heatmap_fp,
+                sep="\t",
+                index_label="feature_id",
+            )
             results_names_fp.write_text(
                 "Intercept\ncondition_treated_vs_control\n",
                 encoding="utf-8",
@@ -393,6 +410,7 @@ class TestMethods(TestPluginBase):
             observed.sample_pca_percent_variance,
             expected_sample_pca_percent_variance,
         )
+        assert_frame_equal(observed.count_matrix_heatmap, expected_count_matrix_heatmap)
         self.assertEqual(
             observed.default_effect_id, "contrast::condition::other::control"
         )
@@ -427,6 +445,7 @@ class TestMethods(TestPluginBase):
         expected_sample_pca_percent_variance = (
             self.sample_run_result.sample_pca_percent_variance
         )
+        expected_count_matrix_heatmap = self.sample_run_result.count_matrix_heatmap
         captured = {}
 
         def _fake_run(cmd, check, capture_output, text):
@@ -438,6 +457,7 @@ class TestMethods(TestPluginBase):
                 cmd[cmd.index("--sample-distance-order") + 1]
             )
             sample_pca_fp = Path(cmd[cmd.index("--sample-pca") + 1])
+            count_matrix_heatmap_fp = Path(cmd[cmd.index("--count-matrix-heatmap") + 1])
             summary_fp = Path(cmd[cmd.index("--summary") + 1])
             ma_plot_fp = Path(cmd[cmd.index("--ma-plot") + 1])
             results_names_fp = Path(cmd[cmd.index("--results-names") + 1])
@@ -476,6 +496,11 @@ class TestMethods(TestPluginBase):
                 percent_variance_pc1=expected_sample_pca_percent_variance[0],
                 percent_variance_pc2=expected_sample_pca_percent_variance[1],
             ).to_csv(sample_pca_fp, sep="\t", index_label="sample_id")
+            expected_count_matrix_heatmap.to_csv(
+                count_matrix_heatmap_fp,
+                sep="\t",
+                index_label="feature_id",
+            )
             results_names_fp.write_text(
                 "Intercept\ngenotype_nonKO_vs_KO\ntreatment_compoundA_vs_dmso\n",
                 encoding="utf-8",
@@ -507,6 +532,7 @@ class TestMethods(TestPluginBase):
             observed.sample_pca_percent_variance,
             expected_sample_pca_percent_variance,
         )
+        assert_frame_equal(observed.count_matrix_heatmap, expected_count_matrix_heatmap)
         self.assertEqual(
             observed.default_effect_id,
             "simple::genotype::nonKO::KO|within::treatment::compoundA",

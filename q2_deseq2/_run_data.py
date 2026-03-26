@@ -31,6 +31,7 @@ class DESeq2RunResult(NamedTuple):
     sample_distance_order: tuple[str, ...] = ()
     sample_pca_scores: pd.DataFrame | None = None
     sample_pca_percent_variance: tuple[float, float] = ()
+    count_matrix_heatmap: pd.DataFrame | None = None
 
 
 def _first_non_empty_string(value) -> str:
@@ -108,6 +109,15 @@ def _write_run_result(path: Path, run_result: DESeq2RunResult, alpha: float) -> 
             path / "sample_pca.tsv",
             sep="\t",
             index_label="sample_id",
+        )
+    if run_result.count_matrix_heatmap is not None and not run_result.count_matrix_heatmap.empty:
+        count_matrix_heatmap = run_result.count_matrix_heatmap.copy()
+        count_matrix_heatmap.index = count_matrix_heatmap.index.map(str)
+        count_matrix_heatmap.columns = count_matrix_heatmap.columns.map(str)
+        count_matrix_heatmap.to_csv(
+            path / "count_matrix_heatmap.tsv",
+            sep="\t",
+            index_label="feature_id",
         )
     (path / "metadata.json").write_text(
         json.dumps(
@@ -220,6 +230,16 @@ def _parse_run_results(
         sample_metadata.columns = sample_metadata.columns.map(str)
         sample_metadata.index.name = None
 
+    count_matrix_heatmap_path = run_data_path / "count_matrix_heatmap.tsv"
+    count_matrix_heatmap = None
+    if count_matrix_heatmap_path.exists():
+        count_matrix_heatmap = pd.read_csv(
+            count_matrix_heatmap_path, sep="\t", index_col=0
+        )
+        count_matrix_heatmap.index = count_matrix_heatmap.index.map(str)
+        count_matrix_heatmap.columns = count_matrix_heatmap.columns.map(str)
+        count_matrix_heatmap.index.name = None
+
     run_result = DESeq2RunResult(
         results=results,
         normalized_counts=pd.read_csv(
@@ -245,6 +265,7 @@ def _parse_run_results(
         sample_distance_order=sample_distance_order,
         sample_pca_scores=sample_pca_scores,
         sample_pca_percent_variance=sample_pca_percent_variance,
+        count_matrix_heatmap=count_matrix_heatmap,
     )
 
     return run_result, alpha

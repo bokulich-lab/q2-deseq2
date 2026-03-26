@@ -147,6 +147,10 @@ class TestVisualizers(TestPluginBase):
                 index=["Sample1", "Sample2"],
             ),
             sample_pca_percent_variance=(68.2, 21.5),
+            count_matrix_heatmap=pd.DataFrame(
+                {"Sample2": [7.5, 5.1], "Sample1": [6.8, 4.6]},
+                index=["GG_OTU_2", "GG_OTU_1"],
+            ),
         )
 
     def test_value_or_none_handles_missing_and_numeric_values(self):
@@ -352,6 +356,27 @@ class TestVisualizers(TestPluginBase):
             "condition=control; batch=A",
         )
 
+    def test_prepare_count_matrix_heatmap_payload_preserves_order(self):
+        payload = json.loads(
+            visualizers._prepare_count_matrix_heatmap_payload(
+                self.run_result.count_matrix_heatmap,
+                sample_metadata=self.sample_metadata,
+                reference_levels=("condition::control",),
+            )
+        )
+
+        self.assertEqual(payload["feature_order"], ["GG_OTU_2", "GG_OTU_1"])
+        self.assertEqual(payload["sample_order"], ["Sample2", "Sample1"])
+        self.assertEqual(payload["samples"][0]["sample_id"], "Sample2")
+        self.assertEqual(
+            payload["samples"][0]["sample_metadata"],
+            "condition=treated; batch=B",
+        )
+        self.assertEqual(payload["cells"][0]["feature_id"], "GG_OTU_2")
+        self.assertEqual(payload["cells"][0]["sample_id"], "Sample2")
+        self.assertEqual(payload["cells"][0]["value"], 7.5)
+        self.assertEqual(payload["cells"][0]["sample_metadata"], "condition=treated; batch=B")
+
     def test_write_visualization_output_renders_tabbed_report(self):
         captured = {}
 
@@ -377,11 +402,13 @@ class TestVisualizers(TestPluginBase):
             self.assertTrue((output_path / "normalized_counts.tsv").exists())
             self.assertTrue((output_path / "sample_distances.tsv").exists())
             self.assertTrue((output_path / "sample_metadata.tsv").exists())
+            self.assertTrue((output_path / "count_matrix_heatmap.tsv").exists())
             self.assertFalse((output_path / "ma_plot.png").exists())
             self.assertFalse((output_path / "volcano_plot.png").exists())
             self.assertTrue((output_path / "data" / "results_table.json").exists())
             self.assertTrue((output_path / "data" / "sample_distances.json").exists())
             self.assertTrue((output_path / "data" / "sample_pca.json").exists())
+            self.assertTrue((output_path / "data" / "count_matrix_heatmap.json").exists())
             self.assertTrue((output_path / "css" / "styles.css").exists())
             self.assertTrue((output_path / "js" / "linked_plots.js").exists())
             self.assertTrue((output_path / "js" / "sample_distances.js").exists())
@@ -391,6 +418,7 @@ class TestVisualizers(TestPluginBase):
                 (output_path / "vega" / "sample_distance_heatmap.json").exists()
             )
             self.assertTrue((output_path / "vega" / "sample_pca.json").exists())
+            self.assertTrue((output_path / "vega" / "count_matrix_heatmap.json").exists())
 
             report_payload = json.loads(
                 (output_path / "data" / "results_table.json").read_text(
@@ -404,6 +432,11 @@ class TestVisualizers(TestPluginBase):
             )
             sample_pca_payload = json.loads(
                 (output_path / "data" / "sample_pca.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            count_matrix_heatmap_payload = json.loads(
+                (output_path / "data" / "count_matrix_heatmap.json").read_text(
                     encoding="utf-8"
                 )
             )
@@ -433,6 +466,7 @@ class TestVisualizers(TestPluginBase):
         )
         self.assertTrue(captured["context"]["include_sample_metadata_file"])
         self.assertTrue(captured["context"]["has_sample_pca_plot"])
+        self.assertTrue(captured["context"]["has_count_matrix_heatmap"])
         self.assertEqual(report_payload["columns"][0], "feature_id")
         self.assertEqual(len(report_payload["data"]), 6)
         self.assertIn("effect_id", report_payload["columns"])
@@ -456,6 +490,14 @@ class TestVisualizers(TestPluginBase):
             json.loads(captured["context"]["sample_pca_data_path_json"]),
             "data/sample_pca.json",
         )
+        self.assertEqual(
+            json.loads(captured["context"]["count_matrix_heatmap_data_path_json"]),
+            "data/count_matrix_heatmap.json",
+        )
+        self.assertEqual(
+            count_matrix_heatmap_payload["feature_order"],
+            ["GG_OTU_2", "GG_OTU_1"],
+        )
 
     def test_write_visualization_output_skips_sample_distance_tab_without_matrix(self):
         captured = {}
@@ -470,6 +512,7 @@ class TestVisualizers(TestPluginBase):
             sample_distance_order=(),
             sample_pca_scores=None,
             sample_pca_percent_variance=(),
+            count_matrix_heatmap=None,
         )
 
         with TemporaryDirectory() as temp_dir, patch.object(
@@ -486,8 +529,10 @@ class TestVisualizers(TestPluginBase):
 
             self.assertFalse((output_path / "sample_distances.tsv").exists())
             self.assertFalse((output_path / "sample_metadata.tsv").exists())
+            self.assertFalse((output_path / "count_matrix_heatmap.tsv").exists())
             self.assertFalse((output_path / "data" / "sample_distances.json").exists())
             self.assertFalse((output_path / "data" / "sample_pca.json").exists())
+            self.assertFalse((output_path / "data" / "count_matrix_heatmap.json").exists())
 
         self.assertEqual(
             [Path(template).name for template in captured["templates"]],

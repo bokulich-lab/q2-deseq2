@@ -45,6 +45,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     bottom: 84,
   };
 
+  const countMatrixPadding = {
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  };
+
   const showError = (node, label, error) => {
     if (!node) {
       return;
@@ -223,28 +230,155 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   };
 
-  const renderDistanceLegend = (legendNode, cells) => {
-    const distances = cells
-      .map((cell) => Number(cell.distance))
+  const renderHeatmapLegend = (legendNode, values, title) => {
+    const numericValues = values
+      .map((value) => Number(value))
       .filter((value) => Number.isFinite(value));
-    if (distances.length === 0) {
+    if (numericValues.length === 0) {
       legendNode.hidden = true;
       legendNode.innerHTML = "";
       return;
     }
 
-    const maximum = Math.max(...distances);
-    const midpoint = maximum / 2;
+    const minimum = Math.min(...numericValues);
+    const maximum = Math.max(...numericValues);
+    const midpoint = minimum + (maximum - minimum) / 2;
     legendNode.hidden = false;
     legendNode.innerHTML = `
-      <div class="sample-distance-legend-title">Sample distance</div>
+      <div class="sample-distance-legend-title">${title}</div>
       <div class="sample-distance-legend-bar"></div>
       <div class="sample-distance-legend-scale">
-        <span>${formatLegendValue(0)}</span>
+        <span>${formatLegendValue(minimum)}</span>
         <span>${formatLegendValue(midpoint)}</span>
         <span>${formatLegendValue(maximum)}</span>
       </div>
     `;
+  };
+
+  const renderDistanceLegend = (legendNode, cells) => {
+    renderHeatmapLegend(
+      legendNode,
+      cells.map((cell) => cell.distance),
+      "Sample distance"
+    );
+  };
+
+  const parseMetadataText = (text) => {
+    return String(text || "")
+      .split(";")
+      .map((part) => part.trim())
+      .filter((part) => part !== "")
+      .map((part) => {
+        const separatorIndex = part.indexOf("=");
+        if (separatorIndex === -1) {
+          return {
+            field: "",
+            value: part,
+            raw: part,
+          };
+        }
+        return {
+          field: part.slice(0, separatorIndex).trim(),
+          value: part.slice(separatorIndex + 1).trim(),
+          raw: part,
+        };
+      });
+  };
+
+  const abbreviateMetadataValue = (value) => {
+    const text = String(value || "").trim();
+    if (text === "") {
+      return "";
+    }
+
+    const tokens = text.split(/[^A-Za-z0-9]+/).filter(Boolean);
+    if (tokens.length > 1) {
+      return tokens
+        .map((token) => {
+          const head = token.slice(0, 1).toUpperCase();
+          const digits = token.replace(/[^0-9]/g, "");
+          return `${head}${digits}`;
+        })
+        .join("")
+        .slice(0, 3);
+    }
+
+    const alphaNumeric = text.replace(/[^A-Za-z0-9]/g, "");
+    if (alphaNumeric.length <= 3) {
+      return alphaNumeric.toUpperCase();
+    }
+    return alphaNumeric.slice(0, 1).toUpperCase();
+  };
+
+  const renderCountMatrixSampleLabels = (
+    labelNode,
+    samples,
+    metadataColors,
+    plotWidth
+  ) => {
+    labelNode.innerHTML = "";
+    labelNode.style.gridTemplateColumns = `repeat(${samples.length}, minmax(0, 1fr))`;
+    labelNode.style.width = `${plotWidth}px`;
+
+    samples.forEach((sample) => {
+      const item = document.createElement("div");
+      item.className = "count-matrix-sample-header";
+      item.title = sample.sample_label || sample.sample_id;
+
+      const sampleName = document.createElement("div");
+      sampleName.className = "count-matrix-sample-name";
+      sampleName.textContent = sample.sample_id;
+      item.append(sampleName);
+
+      const metadataStrip = document.createElement("div");
+      metadataStrip.className = "count-matrix-sample-meta-strip";
+      parseMetadataText(sample.sample_metadata).forEach((entry) => {
+        const badge = document.createElement("span");
+        badge.className = "sample-distance-row-meta";
+        badge.textContent = abbreviateMetadataValue(entry.value || entry.raw);
+        badge.title = entry.raw;
+
+        const fieldKey = entry.field || "_metadata";
+        const color = metadataColors.get(fieldKey)?.get(entry.value);
+        if (color) {
+          badge.style.setProperty("--sample-distance-meta-bg", color.background);
+          badge.style.setProperty("--sample-distance-meta-border", color.border);
+          badge.style.setProperty("--sample-distance-meta-text", color.text);
+        }
+        metadataStrip.append(badge);
+      });
+
+      item.append(metadataStrip);
+      labelNode.append(item);
+    });
+  };
+
+  const renderSimpleRowLabels = (
+    rowLabelNode,
+    labels,
+    plotHeight,
+    rowHeight,
+    alignToTop = false
+  ) => {
+    rowLabelNode.innerHTML = "";
+    rowLabelNode.style.gridTemplateRows = `repeat(${labels.length}, ${rowHeight}px)`;
+    rowLabelNode.style.paddingTop = alignToTop
+      ? "0px"
+      : `${Math.max(0, (plotHeight - labels.length * rowHeight) / 2)}px`;
+
+    labels.forEach((label) => {
+      const item = document.createElement("div");
+      item.className = "sample-distance-row-label";
+      item.style.height = `${rowHeight}px`;
+      item.title = label;
+
+      const text = document.createElement("span");
+      text.className = "sample-distance-row-sample";
+      text.textContent = label;
+      item.append(text);
+
+      rowLabelNode.append(item);
+    });
   };
 
   const computeHeatmapSize = (availableWidth, sampleCount) => {
@@ -266,6 +400,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     return {
       width,
       height: clamp(Math.round(width * 0.62), 240, 360),
+    };
+  };
+
+  const computeCountMatrixSize = (availableWidth, sampleCount, featureCount) => {
+    const plotWidth = Math.max(
+      260,
+      availableWidth - countMatrixPadding.left - countMatrixPadding.right
+    );
+    const rowHeight = clamp(Math.round(640 / Math.max(featureCount, 1)), 8, 18);
+    return {
+      width: plotWidth,
+      height: featureCount * rowHeight,
+      rowHeight,
     };
   };
 
@@ -351,7 +498,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         const xAxis = renderSpec.axes.find((axis) => axis.scale === "x");
         if (xAxis) {
           xAxis.labelFontSize = sampleOrder.length >= 20 ? 11 : 13;
-          xAxis.labelAngle = 90;
+          xAxis.labelAngle = -90;
           xAxis.labelAlign = "left";
           xAxis.labelBaseline = "middle";
           xAxis.labelPadding = 6;
@@ -611,5 +758,190 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   };
 
-  await Promise.allSettled([initializeHeatmap(), initializePca()]);
+  const initializeCountMatrixHeatmap = async () => {
+    const container = document.getElementById("count-matrix-heatmap-view");
+    const plotShell = container ? container.parentElement : null;
+    const sampleLabelNode = document.getElementById("count-matrix-sample-labels");
+    const rowLabelNode = document.getElementById("count-matrix-heatmap-row-labels");
+    const legendNode = document.getElementById("count-matrix-heatmap-legend");
+    const specNode = document.getElementById("vega_count_matrix_heatmap_spec");
+    const dataPathNode = document.getElementById("count_matrix_heatmap_data_path");
+    const errorNode = document.getElementById("count-matrix-heatmap-error");
+
+    if (
+      !container || !plotShell || !sampleLabelNode || !rowLabelNode || !legendNode
+      || !specNode || !dataPathNode
+    ) {
+      return;
+    }
+
+    try {
+      const baseSpec = parseJsonNode(specNode, null);
+      const dataPath = parseJsonNode(dataPathNode, "");
+      if (!baseSpec || !dataPath) {
+        return;
+      }
+
+      const response = await fetch(dataPath);
+      if (!response.ok) {
+        throw new Error(`Failed to load ${dataPath}: ${response.status}`);
+      }
+
+      const payload = await response.json();
+      const cells = Array.isArray(payload.cells) ? payload.cells : [];
+      const sampleOrder = Array.isArray(payload.sample_order) ? payload.sample_order : [];
+      const featureOrder = Array.isArray(payload.feature_order) ? payload.feature_order : [];
+      const samples = Array.isArray(payload.samples) ? payload.samples : [];
+      if (cells.length === 0 || sampleOrder.length === 0 || featureOrder.length === 0) {
+        return;
+      }
+
+      const parsedSampleRows = (
+        samples.length === sampleOrder.length
+          ? samples
+          : sampleOrder.map((sampleId) => ({
+              sample_id: sampleId,
+              sample_label: sampleId,
+              sample_metadata: "",
+            }))
+      ).map((sample) => ({
+        metadata: parseMetadataText(sample.sample_metadata),
+      }));
+      const metadataColors = buildMetadataColorMap(parsedSampleRows);
+
+      renderHeatmapLegend(
+        legendNode,
+        cells.map((cell) => cell.value),
+        "VST count"
+      );
+
+      let embedResult = null;
+      let currentWidth = 0;
+      let currentHeight = 0;
+
+      const applySpecConfig = (renderSpec, plotSize) => {
+        renderSpec.width = plotSize.width;
+        renderSpec.height = plotSize.height;
+        renderSpec.padding = countMatrixPadding;
+        renderSpec.data[0].values = cells;
+        renderSpec.legends = [];
+        renderSpec.axes = [];
+
+        const xScale = renderSpec.scales.find((scale) => scale.name === "x");
+        const yScale = renderSpec.scales.find((scale) => scale.name === "y");
+        const colorScale = renderSpec.scales.find((scale) => scale.name === "color");
+        if (xScale) {
+          xScale.domain = sampleOrder;
+          xScale.paddingInner = 0;
+          xScale.paddingOuter = 0;
+        }
+        if (yScale) {
+          yScale.domain = featureOrder;
+          yScale.paddingInner = 0;
+          yScale.paddingOuter = 0;
+        }
+        if (colorScale) {
+          colorScale.zero = false;
+        }
+
+        if (renderSpec.marks?.[0]?.encode?.update?.x) {
+          renderSpec.marks[0].encode.update.x.field = "sample_id";
+        }
+        if (renderSpec.marks?.[0]?.encode?.update?.y) {
+          renderSpec.marks[0].encode.update.y.field = "feature_id";
+        }
+        if (renderSpec.marks?.[0]?.encode?.update?.fill) {
+          renderSpec.marks[0].encode.update.fill = {
+            scale: "color",
+            field: "value",
+          };
+        }
+        if (renderSpec.marks?.[0]?.encode?.enter) {
+          renderSpec.marks[0].encode.enter.tooltip = {
+            signal: "{'Feature': datum.feature_id, 'Sample': datum.sample_id, 'Sample metadata': datum.sample_metadata || 'NA', 'VST count': datum.value == null ? 'NA' : format(datum.value, '.4f')}"
+          };
+        }
+      };
+
+      const renderOrResize = async () => {
+        const availableWidth = measureWidth(plotShell);
+        if (availableWidth < 260) {
+          return;
+        }
+
+        const plotSize = computeCountMatrixSize(
+          availableWidth,
+          sampleOrder.length,
+          featureOrder.length
+        );
+        renderCountMatrixSampleLabels(
+          sampleLabelNode,
+          samples.length === sampleOrder.length
+            ? samples
+            : sampleOrder.map((sampleId) => ({
+                sample_id: sampleId,
+                sample_label: sampleId,
+                sample_metadata: "",
+              })),
+          metadataColors,
+          plotSize.width
+        );
+        renderSimpleRowLabels(
+          rowLabelNode,
+          featureOrder,
+          plotSize.height,
+          plotSize.rowHeight,
+          true
+        );
+
+        if (
+          embedResult
+          && plotSize.width === currentWidth
+          && plotSize.height === currentHeight
+        ) {
+          return;
+        }
+
+        currentWidth = plotSize.width;
+        currentHeight = plotSize.height;
+
+        if (!embedResult) {
+          const renderSpec = JSON.parse(JSON.stringify(baseSpec));
+          applySpecConfig(renderSpec, plotSize);
+          embedResult = await vegaEmbed("#count-matrix-heatmap-view", renderSpec, {
+            renderer: "canvas",
+            actions: {
+              export: { png: true, svg: true },
+              source: false,
+              compiled: false,
+              editor: false,
+            },
+            downloadFileName: "deseq2-count-matrix-heatmap",
+            scaleFactor: { png: 2, svg: 1 },
+          });
+          return;
+        }
+
+        embedResult.view.width(currentWidth);
+        embedResult.view.height(currentHeight);
+        await embedResult.view.runAsync();
+      };
+
+      scheduleViewResize(async () => {
+        try {
+          await renderOrResize();
+        } catch (error) {
+          showError(errorNode, "The count-matrix heatmap", error);
+        }
+      }, [plotShell, plotShell.parentElement]);
+    } catch (error) {
+      showError(errorNode, "The count-matrix heatmap", error);
+    }
+  };
+
+  await Promise.allSettled([
+    initializeHeatmap(),
+    initializePca(),
+    initializeCountMatrixHeatmap(),
+  ]);
 });

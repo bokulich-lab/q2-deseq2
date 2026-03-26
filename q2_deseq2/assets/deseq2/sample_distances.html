@@ -49,6 +49,9 @@
         </div>
         <div class="results-actions">
           <a href="sample_distances.tsv" class="btn btn-default">Download sample distance TSV</a>
+          {% if has_count_matrix_heatmap %}
+          <a href="count_matrix_heatmap.tsv" class="btn btn-default">Download count matrix heatmap TSV</a>
+          {% endif %}
           {% if include_sample_metadata_file %}
           <a href="sample_metadata.tsv" class="btn btn-default">Download sample metadata TSV</a>
           {% endif %}
@@ -95,6 +98,29 @@
       </section>
       {% endif %}
     </div>
+
+    {% if has_count_matrix_heatmap %}
+    <section class="plot-column sample-count-matrix-column">
+      <div class="plot-legend-box">
+        <span class="plot-legend-title">Count matrix heatmap</span>
+      </div>
+      <p class="text-muted">
+        Inspect the top {{ count_matrix_heatmap_feature_count }} features by normalized mean,
+        shown as <code>vst</code>-transformed counts across the ordered samples.
+      </p>
+      <div id="count-matrix-heatmap-error" class="alert alert-danger" hidden></div>
+        <div class="sample-distance-shell count-matrix-shell">
+          <div id="count-matrix-heatmap-legend" class="sample-distance-legend" hidden></div>
+          <div class="sample-distance-layout count-matrix-layout">
+            <div id="count-matrix-heatmap-row-labels" class="sample-distance-row-labels count-matrix-row-labels"></div>
+            <div class="sample-distance-plot-shell count-matrix-plot-shell">
+              <div id="count-matrix-sample-labels" class="count-matrix-sample-labels"></div>
+              <div id="count-matrix-heatmap-view"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    {% endif %}
   </div>
 </div>
 
@@ -113,6 +139,14 @@
 </script>
 <script id="sample_pca_data_path" type="application/json">
 {{ sample_pca_data_path_json | safe }}
+</script>
+{% endif %}
+{% if has_count_matrix_heatmap %}
+<script id="vega_count_matrix_heatmap_spec" type="application/json">
+{{ vega_count_matrix_heatmap_spec | safe }}
+</script>
+<script id="count_matrix_heatmap_data_path" type="application/json">
+{{ count_matrix_heatmap_data_path_json | safe }}
 </script>
 {% endif %}
 {% endblock %}

@@ -23,6 +23,12 @@
   min-width: 0;
 }
 
+#count-matrix-heatmap-view {
+  width: 100%;
+  min-height: 320px;
+  min-width: 0;
+}
+
 .results-actions {
   display: flex;
   flex-wrap: wrap;
@@ -229,6 +235,76 @@
 
 .sample-pca-shell {
   min-height: 420px;
+}
+
+.sample-count-matrix-column {
+  margin-top: 24px;
+}
+
+.count-matrix-shell {
+  padding-top: 8px;
+}
+
+.count-matrix-layout {
+  grid-template-columns: fit-content(140px) minmax(0, 1fr);
+}
+
+.count-matrix-row-labels {
+  align-self: start;
+}
+
+.count-matrix-row-labels .sample-distance-row-label {
+  font-size: 12px;
+  justify-content: flex-start;
+  padding-right: 0;
+}
+
+.count-matrix-plot-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.count-matrix-sample-labels {
+  align-self: flex-start;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.count-matrix-sample-header {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.count-matrix-sample-name {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.count-matrix-sample-meta-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+  min-width: 0;
+}
+
+.count-matrix-sample-meta-strip .sample-distance-row-meta {
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 1;
+  max-width: none;
+  min-width: 20px;
+  padding: 2px 5px;
+  text-align: center;
 }
 
 .plot-column {

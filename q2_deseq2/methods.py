@@ -423,6 +423,7 @@ def _write_r_script(script_fp: Path) -> None:
         sample_distances_path <- get_arg("--sample-distances")
         sample_distance_order_path <- get_arg("--sample-distance-order")
         sample_pca_path <- get_arg("--sample-pca")
+        count_matrix_heatmap_path <- get_arg("--count-matrix-heatmap")
         summary_path <- get_arg("--summary")
         results_names_path <- get_arg("--results-names")
         reference_levels_path <- get_arg("--reference-levels")
@@ -739,6 +740,28 @@ def _write_r_script(script_fp: Path) -> None:
           row.names = FALSE
         )
 
+        top_heatmap_n <- min(100, nrow(dds))
+        top_heatmap_select <- order(
+          rowMeans(counts(dds, normalized = TRUE)),
+          decreasing = TRUE
+        )[seq_len(top_heatmap_n)]
+        ordered_sample_ids <- sample_hclust$labels[sample_hclust$order]
+        count_matrix_heatmap_df <- as.data.frame(
+          assay(vsd)[top_heatmap_select, ordered_sample_ids, drop = FALSE]
+        )
+        count_matrix_heatmap_df$feature_id <- rownames(count_matrix_heatmap_df)
+        count_matrix_heatmap_df <- count_matrix_heatmap_df[
+          ,
+          c("feature_id", setdiff(colnames(count_matrix_heatmap_df), "feature_id"))
+        ]
+        write.table(
+          count_matrix_heatmap_df,
+          file = count_matrix_heatmap_path,
+          sep = "\\t",
+          quote = FALSE,
+          row.names = FALSE
+        )
+
         if (length(summary_lines) == 0) {
           summary_lines <- "No effects were generated."
         }
@@ -815,6 +838,7 @@ def _run_deseq2_with_frames(
         sample_distances_fp = temp_path / "sample_distances.tsv"
         sample_distance_order_fp = temp_path / "sample_distance_order.txt"
         sample_pca_fp = temp_path / "sample_pca.tsv"
+        count_matrix_heatmap_fp = temp_path / "count_matrix_heatmap.tsv"
         summary_fp = temp_path / "deseq2_summary.txt"
         results_names_fp = temp_path / "results_names.txt"
         reference_levels_fp = temp_path / "reference_levels.txt"
@@ -845,6 +869,8 @@ def _run_deseq2_with_frames(
             str(sample_distance_order_fp),
             "--sample-pca",
             str(sample_pca_fp),
+            "--count-matrix-heatmap",
+            str(count_matrix_heatmap_fp),
             "--summary",
             str(summary_fp),
             "--ma-plot",
@@ -885,6 +911,7 @@ def _run_deseq2_with_frames(
             "sample_distances.tsv": sample_distances_fp,
             "sample_distance_order.txt": sample_distance_order_fp,
             "sample_pca.tsv": sample_pca_fp,
+            "count_matrix_heatmap.tsv": count_matrix_heatmap_fp,
             "results_names.txt": results_names_fp,
         }
         for expected_name, path in expected_outputs.items():
@@ -910,6 +937,13 @@ def _run_deseq2_with_frames(
         sample_pca_scores.columns = sample_pca_scores.columns.map(str)
         sample_pca_scores.index.name = None
         sample_pca_scores.columns.name = None
+        count_matrix_heatmap = pd.read_csv(
+            count_matrix_heatmap_fp, sep="\t", index_col=0
+        )
+        count_matrix_heatmap.index = count_matrix_heatmap.index.map(str)
+        count_matrix_heatmap.columns = count_matrix_heatmap.columns.map(str)
+        count_matrix_heatmap.index.name = None
+        count_matrix_heatmap.columns.name = None
         sample_pca_percent_variance = ()
         if {"percent_variance_pc1", "percent_variance_pc2"} <= set(
             sample_pca_scores.columns
@@ -950,6 +984,7 @@ def _run_deseq2_with_frames(
             sample_distance_order=sample_distance_order,
             sample_pca_scores=sample_pca_scores,
             sample_pca_percent_variance=sample_pca_percent_variance,
+            count_matrix_heatmap=count_matrix_heatmap,
         )
 
 

@@ -142,6 +142,11 @@ class TestVisualizers(TestPluginBase):
             ),
             sample_distance_matrix=self.sample_distance_matrix,
             sample_distance_order=("Sample2", "Sample1"),
+            sample_pca_scores=pd.DataFrame(
+                {"PC1": [-2.1, 2.1], "PC2": [0.35, -0.35]},
+                index=["Sample1", "Sample2"],
+            ),
+            sample_pca_percent_variance=(68.2, 21.5),
         )
 
     def test_value_or_none_handles_missing_and_numeric_values(self):
@@ -326,6 +331,27 @@ class TestVisualizers(TestPluginBase):
             "condition=control; batch=A",
         )
 
+    def test_prepare_sample_pca_payload_uses_reference_grouping(self):
+        payload = json.loads(
+            visualizers._prepare_sample_pca_payload(
+                self.run_result.sample_pca_scores,
+                sample_pca_percent_variance=self.run_result.sample_pca_percent_variance,
+                sample_distance_order=("Sample2", "Sample1"),
+                sample_metadata=self.sample_metadata,
+                reference_levels=("condition::control",),
+            )
+        )
+
+        self.assertEqual(payload["group_field"], "condition")
+        self.assertEqual(payload["group_label"], "condition (ref: control)")
+        self.assertEqual(payload["percent_variance"]["PC1"], 68.2)
+        self.assertEqual(payload["points"][0]["sample_id"], "Sample2")
+        self.assertEqual(payload["points"][0]["group_value"], "treated")
+        self.assertEqual(
+            payload["points"][1]["sample_metadata"],
+            "condition=control; batch=A",
+        )
+
     def test_write_visualization_output_renders_tabbed_report(self):
         captured = {}
 
@@ -355,6 +381,7 @@ class TestVisualizers(TestPluginBase):
             self.assertFalse((output_path / "volcano_plot.png").exists())
             self.assertTrue((output_path / "data" / "results_table.json").exists())
             self.assertTrue((output_path / "data" / "sample_distances.json").exists())
+            self.assertTrue((output_path / "data" / "sample_pca.json").exists())
             self.assertTrue((output_path / "css" / "styles.css").exists())
             self.assertTrue((output_path / "js" / "linked_plots.js").exists())
             self.assertTrue((output_path / "js" / "sample_distances.js").exists())
@@ -363,6 +390,7 @@ class TestVisualizers(TestPluginBase):
             self.assertTrue(
                 (output_path / "vega" / "sample_distance_heatmap.json").exists()
             )
+            self.assertTrue((output_path / "vega" / "sample_pca.json").exists())
 
             report_payload = json.loads(
                 (output_path / "data" / "results_table.json").read_text(
@@ -371,6 +399,11 @@ class TestVisualizers(TestPluginBase):
             )
             sample_distance_payload = json.loads(
                 (output_path / "data" / "sample_distances.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            sample_pca_payload = json.loads(
+                (output_path / "data" / "sample_pca.json").read_text(
                     encoding="utf-8"
                 )
             )
@@ -399,6 +432,7 @@ class TestVisualizers(TestPluginBase):
             len(json.loads(captured["context"]["effect_options_json"])), 2
         )
         self.assertTrue(captured["context"]["include_sample_metadata_file"])
+        self.assertTrue(captured["context"]["has_sample_pca_plot"])
         self.assertEqual(report_payload["columns"][0], "feature_id")
         self.assertEqual(len(report_payload["data"]), 6)
         self.assertIn("effect_id", report_payload["columns"])
@@ -412,6 +446,16 @@ class TestVisualizers(TestPluginBase):
             ["Sample2", "Sample1"],
         )
         self.assertEqual(captured["context"]["sample_distance_sample_count"], 2)
+        self.assertEqual(sample_pca_payload["group_label"], "condition (ref: control)")
+        self.assertEqual(sample_pca_payload["points"][0]["sample_id"], "Sample2")
+        self.assertEqual(
+            sample_pca_payload["percent_variance"],
+            {"PC1": 68.2, "PC2": 21.5},
+        )
+        self.assertEqual(
+            json.loads(captured["context"]["sample_pca_data_path_json"]),
+            "data/sample_pca.json",
+        )
 
     def test_write_visualization_output_skips_sample_distance_tab_without_matrix(self):
         captured = {}
@@ -424,6 +468,8 @@ class TestVisualizers(TestPluginBase):
         run_result = self.run_result._replace(
             sample_distance_matrix=None,
             sample_distance_order=(),
+            sample_pca_scores=None,
+            sample_pca_percent_variance=(),
         )
 
         with TemporaryDirectory() as temp_dir, patch.object(
@@ -441,6 +487,7 @@ class TestVisualizers(TestPluginBase):
             self.assertFalse((output_path / "sample_distances.tsv").exists())
             self.assertFalse((output_path / "sample_metadata.tsv").exists())
             self.assertFalse((output_path / "data" / "sample_distances.json").exists())
+            self.assertFalse((output_path / "data" / "sample_pca.json").exists())
 
         self.assertEqual(
             [Path(template).name for template in captured["templates"]],

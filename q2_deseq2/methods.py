@@ -422,6 +422,7 @@ def _write_r_script(script_fp: Path) -> None:
         norm_counts_path <- get_arg("--normalized-counts")
         sample_distances_path <- get_arg("--sample-distances")
         sample_distance_order_path <- get_arg("--sample-distance-order")
+        sample_pca_path <- get_arg("--sample-pca")
         summary_path <- get_arg("--summary")
         results_names_path <- get_arg("--results-names")
         reference_levels_path <- get_arg("--reference-levels")
@@ -705,6 +706,39 @@ def _write_r_script(script_fp: Path) -> None:
           con = sample_distance_order_path
         )
 
+        ntop <- min(500, nrow(vsd))
+        rv <- matrixStats::rowVars(assay(vsd))
+        select <- order(rv, decreasing = TRUE)[seq_len(ntop)]
+        sample_pca <- prcomp(t(assay(vsd)[select, , drop = FALSE]))
+        total_variance <- sum(sample_pca$sdev^2)
+        if (total_variance > 0) {
+          percent_var <- (sample_pca$sdev^2) / total_variance
+        } else {
+          percent_var <- c(1, rep(0, max(1, length(sample_pca$sdev) - 1)))
+        }
+
+        sample_ids <- rownames(sample_pca$x)
+        pc1_values <- if (ncol(sample_pca$x) >= 1) sample_pca$x[, 1] else rep(0, length(sample_ids))
+        pc2_values <- if (ncol(sample_pca$x) >= 2) sample_pca$x[, 2] else rep(0, length(sample_ids))
+        percent_pc1 <- if (length(percent_var) >= 1) percent_var[[1]] * 100 else 0
+        percent_pc2 <- if (length(percent_var) >= 2) percent_var[[2]] * 100 else 0
+        sample_pca_df <- data.frame(
+          sample_id = sample_ids,
+          PC1 = pc1_values,
+          PC2 = pc2_values,
+          percent_variance_pc1 = rep(percent_pc1, length(sample_ids)),
+          percent_variance_pc2 = rep(percent_pc2, length(sample_ids)),
+          row.names = NULL,
+          check.names = FALSE
+        )
+        write.table(
+          sample_pca_df,
+          file = sample_pca_path,
+          sep = "\\t",
+          quote = FALSE,
+          row.names = FALSE
+        )
+
         if (length(summary_lines) == 0) {
           summary_lines <- "No effects were generated."
         }
@@ -780,6 +814,7 @@ def _run_deseq2_with_frames(
         normalized_counts_fp = temp_path / "normalized_counts.tsv"
         sample_distances_fp = temp_path / "sample_distances.tsv"
         sample_distance_order_fp = temp_path / "sample_distance_order.txt"
+        sample_pca_fp = temp_path / "sample_pca.tsv"
         summary_fp = temp_path / "deseq2_summary.txt"
         results_names_fp = temp_path / "results_names.txt"
         reference_levels_fp = temp_path / "reference_levels.txt"
@@ -808,6 +843,8 @@ def _run_deseq2_with_frames(
             str(sample_distances_fp),
             "--sample-distance-order",
             str(sample_distance_order_fp),
+            "--sample-pca",
+            str(sample_pca_fp),
             "--summary",
             str(summary_fp),
             "--ma-plot",
@@ -847,6 +884,7 @@ def _run_deseq2_with_frames(
             "normalized_counts.tsv": normalized_counts_fp,
             "sample_distances.tsv": sample_distances_fp,
             "sample_distance_order.txt": sample_distance_order_fp,
+            "sample_pca.tsv": sample_pca_fp,
             "results_names.txt": results_names_fp,
         }
         for expected_name, path in expected_outputs.items():
@@ -867,6 +905,22 @@ def _run_deseq2_with_frames(
         sample_distance_order = _unique_non_empty_values(
             sample_distance_order_fp.read_text(encoding="utf-8").splitlines()
         )
+        sample_pca_scores = pd.read_csv(sample_pca_fp, sep="\t", index_col=0)
+        sample_pca_scores.index = sample_pca_scores.index.map(str)
+        sample_pca_scores.columns = sample_pca_scores.columns.map(str)
+        sample_pca_scores.index.name = None
+        sample_pca_scores.columns.name = None
+        sample_pca_percent_variance = ()
+        if {"percent_variance_pc1", "percent_variance_pc2"} <= set(
+            sample_pca_scores.columns
+        ):
+            sample_pca_percent_variance = (
+                float(sample_pca_scores.iloc[0]["percent_variance_pc1"]),
+                float(sample_pca_scores.iloc[0]["percent_variance_pc2"]),
+            )
+            sample_pca_scores = sample_pca_scores.drop(
+                columns=["percent_variance_pc1", "percent_variance_pc2"]
+            )
         available_results_names = _unique_non_empty_values(
             results_names_fp.read_text(encoding="utf-8").splitlines()
         )
@@ -894,6 +948,8 @@ def _run_deseq2_with_frames(
             selected_effect_specs=selected_effect_specs,
             sample_distance_matrix=sample_distance_matrix,
             sample_distance_order=sample_distance_order,
+            sample_pca_scores=sample_pca_scores,
+            sample_pca_percent_variance=sample_pca_percent_variance,
         )
 
 

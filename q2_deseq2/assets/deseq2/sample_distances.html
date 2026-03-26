@@ -12,13 +12,24 @@
 <div class="row top-spaced-row">
   <div class="col-lg-12">
     <div class="report-header">
-      <h3 class="report-title">Sample-to-sample distance heatmap</h3>
+      <h3 class="report-title">
+        {% if has_sample_pca_plot %}
+        Sample-to-sample distances and PCA
+        {% else %}
+        Sample-to-sample distance heatmap
+        {% endif %}
+      </h3>
       <p class="text-muted sample-distance-notes">
         Explore Euclidean distances between samples computed from
         <code>vst(dds, blind=FALSE)</code> transformed counts and ordered by
         hierarchical clustering, following the DESeq2 sample-distance heatmap
-        workflow. When model metadata are available, the row labels include the
-        corresponding sample annotations.
+        workflow.
+        {% if has_sample_pca_plot %}
+        The companion panel shows the first two principal components from the
+        same transformed assay, matching the DESeq2 sample PCA workflow.
+        {% endif %}
+        When model metadata are available, the row labels and PCA tooltips
+        include the corresponding sample annotations.
       </p>
 
       <div class="results-toolbar">
@@ -45,13 +56,44 @@
       </div>
     </div>
 
-    <div id="sample-distance-error" class="alert alert-danger" hidden></div>
-    <div class="sample-distance-shell">
-      <div id="sample-distance-legend" class="sample-distance-legend" hidden></div>
-      <div class="sample-distance-layout">
-        <div id="sample-distance-row-labels" class="sample-distance-row-labels"></div>
-        <div id="sample-distance-view"></div>
-      </div>
+    <div class="paired-plots{% if not has_sample_pca_plot %} sample-distance-panels-single{% endif %}">
+      <section class="plot-column">
+        <div class="plot-legend-box">
+          <span class="plot-legend-title">Sample distance heatmap</span>
+        </div>
+        <p class="text-muted">
+          Inspect clustered Euclidean distances between samples from the shared
+          <code>vst</code> assay.
+        </p>
+        <div id="sample-distance-error" class="alert alert-danger" hidden></div>
+        <div class="sample-distance-shell">
+          <div id="sample-distance-legend" class="sample-distance-legend" hidden></div>
+          <div class="sample-distance-layout">
+            <div id="sample-distance-row-labels" class="sample-distance-row-labels"></div>
+            <div class="sample-distance-plot-shell">
+              <div id="sample-distance-view"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {% if has_sample_pca_plot %}
+      <section class="plot-column">
+        <div class="plot-legend-box">
+          <span class="plot-legend-title">Principal component plot</span>
+        </div>
+        <p class="text-muted">
+          Inspect PC1 and PC2 from the same transformed assay used to build the
+          distance heatmap.
+        </p>
+        <div id="sample-pca-error" class="alert alert-danger" hidden></div>
+        <div class="sample-distance-shell sample-pca-shell">
+          <div class="sample-pca-plot-shell">
+            <div id="sample-pca-view"></div>
+          </div>
+        </div>
+      </section>
+      {% endif %}
     </div>
   </div>
 </div>
@@ -65,6 +107,14 @@
 <script id="sample_distance_order" type="application/json">
 {{ sample_distance_order_json | safe }}
 </script>
+{% if has_sample_pca_plot %}
+<script id="vega_sample_pca_spec" type="application/json">
+{{ vega_sample_pca_spec | safe }}
+</script>
+<script id="sample_pca_data_path" type="application/json">
+{{ sample_pca_data_path_json | safe }}
+</script>
+{% endif %}
 {% endblock %}
 
 {% block footer %}

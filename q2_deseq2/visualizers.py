@@ -392,27 +392,36 @@ def _reference_level_map(reference_levels: tuple[str, ...]) -> dict[str, str]:
     return mapping
 
 
-def _build_sample_label_map(
-    sample_metadata: pd.DataFrame | None,
-    ordered_sample_ids: list[str],
-    reference_levels: tuple[str, ...],
-) -> tuple[dict[str, str], dict[str, str]]:
+def _prepare_sample_metadata_frame(
+    sample_metadata: pd.DataFrame | None, ordered_sample_ids: list[str]
+) -> pd.DataFrame | None:
     if sample_metadata is None or sample_metadata.empty:
-        return {}, {}
+        return None
 
     metadata = sample_metadata.copy()
     metadata.index = metadata.index.map(str)
     metadata.columns = metadata.columns.map(str)
-    reference_map = _reference_level_map(reference_levels)
 
-    available_sample_ids = [sample_id for sample_id in ordered_sample_ids if sample_id in metadata.index]
+    available_sample_ids = [
+        sample_id for sample_id in ordered_sample_ids if sample_id in metadata.index
+    ]
     if not available_sample_ids:
         available_sample_ids = metadata.index.tolist()
-    metadata = metadata.loc[available_sample_ids]
 
+    metadata = metadata.loc[available_sample_ids]
+    return metadata
+
+
+def _ordered_sample_metadata_columns(
+    sample_metadata: pd.DataFrame | None, reference_levels: tuple[str, ...]
+) -> list[str]:
+    if sample_metadata is None or sample_metadata.empty:
+        return []
+
+    reference_map = _reference_level_map(reference_levels)
     candidate_columns = []
-    for column in metadata.columns:
-        series = metadata[column]
+    for column in sample_metadata.columns:
+        series = sample_metadata[column]
         non_missing = series.dropna()
         if non_missing.empty:
             continue
@@ -426,6 +435,28 @@ def _build_sample_label_map(
         if column in candidate_columns and column not in seen_columns:
             ordered_columns.append(column)
             seen_columns.add(column)
+
+    return ordered_columns
+
+
+def _format_metadata_column_label(column: str, reference_levels: tuple[str, ...]) -> str:
+    reference_level = _reference_level_map(reference_levels).get(column)
+    if reference_level:
+        return f"{column} (ref: {reference_level})"
+    return column
+
+
+def _build_sample_label_map(
+    sample_metadata: pd.DataFrame | None,
+    ordered_sample_ids: list[str],
+    reference_levels: tuple[str, ...],
+) -> tuple[dict[str, str], dict[str, str]]:
+    metadata = _prepare_sample_metadata_frame(sample_metadata, ordered_sample_ids)
+    if metadata is None or metadata.empty:
+        return {}, {}
+
+    available_sample_ids = metadata.index.tolist()
+    ordered_columns = _ordered_sample_metadata_columns(metadata, reference_levels)
 
     sample_labels = {}
     sample_metadata_text = {}
@@ -448,6 +479,92 @@ def _build_sample_label_map(
     return sample_labels, sample_metadata_text
 
 
+def _prepare_sample_pca_payload(
+    sample_pca_scores: pd.DataFrame,
+    sample_pca_percent_variance: tuple[float, float] = (),
+    sample_distance_order: tuple[str, ...] = (),
+    sample_metadata: pd.DataFrame | None = None,
+    reference_levels: tuple[str, ...] = (),
+) -> str:
+    scores = sample_pca_scores.copy()
+    scores.index = scores.index.map(str)
+    scores.columns = scores.columns.map(str)
+
+    ordered_ids = []
+    seen = set()
+    for sample_id in sample_distance_order:
+        normalized = str(sample_id).strip()
+        if normalized and normalized in scores.index and normalized not in seen:
+            ordered_ids.append(normalized)
+            seen.add(normalized)
+    for sample_id in scores.index.tolist():
+        if sample_id not in seen:
+            ordered_ids.append(sample_id)
+
+    metadata = _prepare_sample_metadata_frame(sample_metadata, ordered_ids)
+    ordered_columns = _ordered_sample_metadata_columns(metadata, reference_levels)
+    group_field = ordered_columns[0] if ordered_columns else ""
+    group_label = (
+        _format_metadata_column_label(group_field, reference_levels)
+        if group_field
+        else ""
+    )
+    sample_labels, sample_metadata_text = _build_sample_label_map(
+        sample_metadata=metadata,
+        ordered_sample_ids=ordered_ids,
+        reference_levels=reference_levels,
+    )
+
+    points = []
+    for sample_id in ordered_ids:
+        if sample_id not in scores.index:
+            continue
+
+        pc1 = _value_or_none(scores.at[sample_id, "PC1"])
+        pc2 = _value_or_none(scores.at[sample_id, "PC2"])
+        if pc1 is None or pc2 is None:
+            continue
+
+        group_value = ""
+        if metadata is not None and group_field and sample_id in metadata.index:
+            raw_group_value = metadata.at[sample_id, group_field]
+            if not pd.isna(raw_group_value):
+                group_value = str(raw_group_value).strip()
+
+        points.append(
+            {
+                "sample_id": sample_id,
+                "sample_label": sample_labels.get(sample_id, sample_id),
+                "sample_metadata": sample_metadata_text.get(sample_id, ""),
+                "group_value": group_value or "Samples",
+                "PC1": pc1,
+                "PC2": pc2,
+            }
+        )
+
+    percent_pc1 = (
+        float(sample_pca_percent_variance[0])
+        if len(sample_pca_percent_variance) >= 1
+        else 0.0
+    )
+    percent_pc2 = (
+        float(sample_pca_percent_variance[1])
+        if len(sample_pca_percent_variance) >= 2
+        else 0.0
+    )
+
+    payload = {
+        "points": points,
+        "group_field": group_field,
+        "group_label": group_label,
+        "percent_variance": {
+            "PC1": percent_pc1,
+            "PC2": percent_pc2,
+        },
+    }
+    return json.dumps(payload).replace("NaN", "null")
+
+
 def _copy_report_assets(output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     for folder in ["css", "js", "vega"]:
@@ -468,6 +585,8 @@ def _render_report(
     sample_distance_order: tuple[str, ...] = (),
     sample_metadata: pd.DataFrame | None = None,
     reference_levels: tuple[str, ...] = (),
+    sample_pca_scores: pd.DataFrame | None = None,
+    sample_pca_percent_variance: tuple[float, float] = (),
 ) -> None:
     if q2templates is None:
         raise ImportError("q2templates is required to render the DESeq2 visualization.")
@@ -487,6 +606,7 @@ def _render_report(
     has_sample_distance_heatmap = (
         sample_distance_matrix is not None and not sample_distance_matrix.empty
     )
+    has_sample_pca_plot = sample_pca_scores is not None and not sample_pca_scores.empty
     ordered_sample_ids = []
     if has_sample_distance_heatmap:
         ordered_sample_ids = _resolve_sample_distance_order(
@@ -501,6 +621,17 @@ def _render_report(
             ),
             encoding="utf-8",
         )
+    if has_sample_pca_plot:
+        (data_dir / "sample_pca.json").write_text(
+            _prepare_sample_pca_payload(
+                sample_pca_scores,
+                sample_pca_percent_variance=sample_pca_percent_variance,
+                sample_distance_order=sample_distance_order,
+                sample_metadata=sample_metadata,
+                reference_levels=reference_levels,
+            ),
+            encoding="utf-8",
+        )
 
     volcano_spec = _load_vega_spec("volcano")
     volcano_spec["signals"][0]["value"] = alpha
@@ -509,6 +640,9 @@ def _render_report(
     sample_distance_spec = None
     if has_sample_distance_heatmap:
         sample_distance_spec = _load_vega_spec("sample_distance_heatmap")
+    sample_pca_spec = None
+    if has_sample_pca_plot:
+        sample_pca_spec = _load_vega_spec("sample_pca")
     effect_options, default_effect_id, default_effect_label = _collect_effect_options(
         report_results, default_effect_id
     )
@@ -541,6 +675,7 @@ def _render_report(
         "default_effect_label": default_effect_label,
         "include_annotated_results_file": include_annotated_results_file,
         "has_sample_distance_heatmap": has_sample_distance_heatmap,
+        "has_sample_pca_plot": has_sample_pca_plot,
         "include_sample_metadata_file": sample_metadata is not None
         and not sample_metadata.empty,
     }
@@ -551,6 +686,9 @@ def _render_report(
         )
         context["sample_distance_order_json"] = json.dumps(ordered_sample_ids)
         context["sample_distance_sample_count"] = len(ordered_sample_ids)
+    if has_sample_pca_plot:
+        context["vega_sample_pca_spec"] = json.dumps(sample_pca_spec)
+        context["sample_pca_data_path_json"] = json.dumps("data/sample_pca.json")
     q2templates.render(templates, str(output_dir), context=context)
 
 
@@ -600,6 +738,8 @@ def _write_visualization_output(
         sample_distance_order=run_result.sample_distance_order,
         sample_metadata=run_result.sample_metadata,
         reference_levels=run_result.reference_levels,
+        sample_pca_scores=run_result.sample_pca_scores,
+        sample_pca_percent_variance=run_result.sample_pca_percent_variance,
     )
 
 

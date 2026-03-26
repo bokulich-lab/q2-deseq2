@@ -142,6 +142,12 @@ class TestFormats(TestPluginBase):
             (workdir / "sample_distance_order.txt").write_text(
                 "Sample2\nSample1\n", encoding="utf-8"
             )
+            (workdir / "sample_pca.tsv").write_text(
+                "sample_id\tPC1\tPC2\n"
+                "Sample1\t-2.1\t0.4\n"
+                "Sample2\t2.1\t-0.4\n",
+                encoding="utf-8",
+            )
 
             format = DESeq2RunDirectoryFormat(str(workdir), mode="r")
             format.validate("min")

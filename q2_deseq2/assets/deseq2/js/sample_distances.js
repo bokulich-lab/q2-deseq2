@@ -1,21 +1,8 @@
 document.addEventListener("DOMContentLoaded", async () => {
-  const container = document.getElementById("sample-distance-view");
-  const layout = container ? container.parentElement : null;
-  const rowLabelNode = document.getElementById("sample-distance-row-labels");
-  const legendNode = document.getElementById("sample-distance-legend");
-  const specNode = document.getElementById("vega_sample_distance_spec");
-  const dataPathNode = document.getElementById("sample_distances_data_path");
-  const orderNode = document.getElementById("sample_distance_order");
-  const errorNode = document.getElementById("sample-distance-error");
-
-  if (
-    !container || !layout || !rowLabelNode || !legendNode
-    || !specNode || !dataPathNode || !orderNode
-  ) {
-    return;
-  }
-
   const parseJsonNode = (node, fallback) => {
+    if (!node) {
+      return fallback;
+    }
     try {
       return JSON.parse(node.textContent);
     } catch {
@@ -24,6 +11,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   };
 
   const measureWidth = (element) => {
+    if (!element) {
+      return 0;
+    }
     return Math.floor(element.getBoundingClientRect().width || 0);
   };
 
@@ -41,39 +31,55 @@ document.addEventListener("DOMContentLoaded", async () => {
     return value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
   };
 
-  const computePlotSize = (availableWidth, sampleCount) => {
-    const plotWidth = Math.max(240, availableWidth - 8);
-    const cellWidth = plotWidth / Math.max(sampleCount, 1);
-    const rowHeight = clamp(Math.round(cellWidth * 0.72), 28, 52);
-    return {
-      width: plotWidth,
-      height: Math.max(240, sampleCount * rowHeight),
-      rowHeight,
-    };
+  const formatPercent = (value) => {
+    if (!Number.isFinite(value)) {
+      return "0";
+    }
+    return value.toFixed(1).replace(/\.0$/, "");
   };
 
-  const renderLegend = (cells) => {
-    const distances = cells
-      .map((cell) => Number(cell.distance))
-      .filter((value) => Number.isFinite(value));
-    if (distances.length === 0) {
-      legendNode.hidden = true;
-      legendNode.innerHTML = "";
+  const heatmapPadding = {
+    left: 0,
+    right: 8,
+    top: 8,
+    bottom: 84,
+  };
+
+  const showError = (node, label, error) => {
+    if (!node) {
       return;
     }
+    node.hidden = false;
+    node.textContent = `${label} could not be loaded.\n\n${String(error)}`;
+  };
 
-    const maximum = Math.max(...distances);
-    const midpoint = maximum / 2;
-    legendNode.hidden = false;
-    legendNode.innerHTML = `
-      <div class="sample-distance-legend-title">Sample distance</div>
-      <div class="sample-distance-legend-bar"></div>
-      <div class="sample-distance-legend-scale">
-        <span>${formatLegendValue(0)}</span>
-        <span>${formatLegendValue(midpoint)}</span>
-        <span>${formatLegendValue(maximum)}</span>
-      </div>
-    `;
+  const scheduleViewResize = (callback, observedElements) => {
+    let scheduled = false;
+
+    const schedule = () => {
+      if (scheduled) {
+        return;
+      }
+      scheduled = true;
+      window.requestAnimationFrame(async () => {
+        scheduled = false;
+        await callback();
+      });
+    };
+
+    window.addEventListener("resize", schedule);
+    if (typeof ResizeObserver === "function") {
+      const observer = new ResizeObserver(() => {
+        schedule();
+      });
+      observedElements.forEach((element) => {
+        if (element) {
+          observer.observe(element);
+        }
+      });
+    }
+
+    schedule();
   };
 
   const parseRowLabel = (label) => {
@@ -140,7 +146,38 @@ document.addEventListener("DOMContentLoaded", async () => {
     return colorsByField;
   };
 
+  const buildGroupPalette = (points, groupField) => {
+    if (!groupField) {
+      return {
+        domain: [],
+        colors: new Map(),
+      };
+    }
+
+    const parsedRows = points.map((point) => ({
+      metadata: point.group_value
+        ? [{ field: groupField, value: point.group_value }]
+        : [],
+    }));
+    const metadataColors = buildMetadataColorMap(parsedRows);
+    const colors = metadataColors.get(groupField) || new Map();
+    const domain = [];
+
+    points.forEach((point) => {
+      const value = point.group_value || "Samples";
+      if (!domain.includes(value)) {
+        domain.push(value);
+      }
+    });
+
+    return {
+      domain,
+      colors,
+    };
+  };
+
   const renderRowLabels = (
+    rowLabelNode,
     parsedRowLabels,
     metadataColors,
     plotHeight,
@@ -186,176 +223,393 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   };
 
-  const showError = (error) => {
-    if (errorNode) {
-      errorNode.hidden = false;
-      errorNode.textContent =
-        "The sample-distance heatmap could not be loaded.\n\n" + String(error);
+  const renderDistanceLegend = (legendNode, cells) => {
+    const distances = cells
+      .map((cell) => Number(cell.distance))
+      .filter((value) => Number.isFinite(value));
+    if (distances.length === 0) {
+      legendNode.hidden = true;
+      legendNode.innerHTML = "";
+      return;
     }
+
+    const maximum = Math.max(...distances);
+    const midpoint = maximum / 2;
+    legendNode.hidden = false;
+    legendNode.innerHTML = `
+      <div class="sample-distance-legend-title">Sample distance</div>
+      <div class="sample-distance-legend-bar"></div>
+      <div class="sample-distance-legend-scale">
+        <span>${formatLegendValue(0)}</span>
+        <span>${formatLegendValue(midpoint)}</span>
+        <span>${formatLegendValue(maximum)}</span>
+      </div>
+    `;
   };
 
-  try {
-    const baseSpec = parseJsonNode(specNode, null);
-    const sampleOrder = parseJsonNode(orderNode, []);
-    const dataPath = parseJsonNode(dataPathNode, "");
+  const computeHeatmapSize = (availableWidth, sampleCount) => {
+    const plotWidth = Math.max(
+      180,
+      availableWidth - heatmapPadding.left - heatmapPadding.right
+    );
+    const cellWidth = plotWidth / Math.max(sampleCount, 1);
+    const rowHeight = clamp(Math.round(cellWidth * 0.76), 28, 52);
+    return {
+      width: plotWidth,
+      height: Math.max(240, sampleCount * rowHeight),
+      rowHeight,
+    };
+  };
+
+  const computePcaSize = (availableWidth, padding) => {
+    const width = Math.max(220, availableWidth - padding.left - padding.right);
+    return {
+      width,
+      height: clamp(Math.round(width * 0.62), 240, 360),
+    };
+  };
+
+  const initializeHeatmap = async () => {
+    const container = document.getElementById("sample-distance-view");
+    const plotShell = container ? container.parentElement : null;
+    const rowLabelNode = document.getElementById("sample-distance-row-labels");
+    const legendNode = document.getElementById("sample-distance-legend");
+    const specNode = document.getElementById("vega_sample_distance_spec");
+    const dataPathNode = document.getElementById("sample_distances_data_path");
+    const orderNode = document.getElementById("sample_distance_order");
+    const errorNode = document.getElementById("sample-distance-error");
+
     if (
-      !baseSpec || !Array.isArray(sampleOrder) || sampleOrder.length === 0 || !dataPath
+      !container || !plotShell || !rowLabelNode || !legendNode || !specNode
+      || !dataPathNode || !orderNode
     ) {
       return;
     }
 
-    const response = await fetch(dataPath);
-    if (!response.ok) {
-      throw new Error(`Failed to load ${dataPath}: ${response.status}`);
-    }
-
-    const cells = await response.json();
-    const rowLabelBySample = new Map();
-    cells.forEach((cell) => {
-      if (!rowLabelBySample.has(cell.sample_y)) {
-        rowLabelBySample.set(cell.sample_y, cell.sample_y_label || cell.sample_y);
-      }
-    });
-
-    const rowLabels = sampleOrder.map(
-      (sampleId) => rowLabelBySample.get(sampleId) || sampleId
-    );
-    const parsedRowLabels = rowLabels.map(parseRowLabel);
-    const metadataColors = buildMetadataColorMap(parsedRowLabels);
-    const hasTooltipMetadata = cells.some((cell) => (
-      (typeof cell.sample_x_metadata === "string" && cell.sample_x_metadata !== "")
-      || (typeof cell.sample_y_metadata === "string" && cell.sample_y_metadata !== "")
-    ));
-
-    renderLegend(cells);
-
-    let embedResult = null;
-    let currentWidth = 0;
-    let currentHeight = 0;
-    let scheduled = false;
-
-    const applySpecConfig = (renderSpec, plotSize) => {
-      renderSpec.width = plotSize.width;
-      renderSpec.height = plotSize.height;
-      renderSpec.padding = {
-        left: 14,
-        right: 18,
-        top: 8,
-        bottom: 84,
-      };
-      renderSpec.data[0].values = cells;
-      renderSpec.legends = [];
-      renderSpec.axes = renderSpec.axes.filter((axis) => axis.scale === "x");
-
-      const xScale = renderSpec.scales.find((scale) => scale.name === "x");
-      const yScale = renderSpec.scales.find((scale) => scale.name === "y");
-      if (xScale) {
-        xScale.domain = sampleOrder;
-        xScale.paddingInner = 0;
-        xScale.paddingOuter = 0;
-      }
-      if (yScale) {
-        yScale.domain = sampleOrder;
-        yScale.paddingInner = 0;
-        yScale.paddingOuter = 0;
-      }
-
-      const xAxis = renderSpec.axes.find((axis) => axis.scale === "x");
-      if (xAxis) {
-        xAxis.labelFontSize = sampleOrder.length >= 20 ? 10 : 11;
-        xAxis.labelAngle = 90;
-        xAxis.labelAlign = "left";
-        xAxis.labelBaseline = "middle";
-        xAxis.title = null;
-      }
-
-      if (renderSpec.marks?.[0]?.encode?.update?.y) {
-        renderSpec.marks[0].encode.update.y.field = "sample_y";
-      }
-
-      if (renderSpec.marks?.[0]?.encode?.enter) {
-        renderSpec.marks[0].encode.enter.tooltip = hasTooltipMetadata
-          ? {
-              signal: "{'Sample A': datum.sample_x, 'Sample A metadata': datum.sample_x_metadata || 'NA', 'Sample B': datum.sample_y, 'Sample B metadata': datum.sample_y_metadata || 'NA', 'Distance': datum.distance == null ? 'NA' : format(datum.distance, '.4f')}"
-            }
-          : {
-              signal: "{'Sample A': datum.sample_x, 'Sample B': datum.sample_y, 'Distance': datum.distance == null ? 'NA' : format(datum.distance, '.4f')}"
-            };
-      }
-    };
-
-    const renderOrResize = async () => {
-      const availableWidth = measureWidth(container);
-      if (availableWidth < 240) {
-        return;
-      }
-
-      const plotSize = computePlotSize(availableWidth, sampleOrder.length);
-      renderRowLabels(
-        parsedRowLabels,
-        metadataColors,
-        plotSize.height,
-        plotSize.rowHeight
-      );
-
+    try {
+      const baseSpec = parseJsonNode(specNode, null);
+      const sampleOrder = parseJsonNode(orderNode, []);
+      const dataPath = parseJsonNode(dataPathNode, "");
       if (
-        embedResult
-        && plotSize.width === currentWidth
-        && plotSize.height === currentHeight
+        !baseSpec || !Array.isArray(sampleOrder) || sampleOrder.length === 0 || !dataPath
       ) {
         return;
       }
 
-      currentWidth = plotSize.width;
-      currentHeight = plotSize.height;
-
-      if (!embedResult) {
-        const renderSpec = JSON.parse(JSON.stringify(baseSpec));
-        applySpecConfig(renderSpec, plotSize);
-        embedResult = await vegaEmbed("#sample-distance-view", renderSpec, {
-          renderer: "canvas",
-          actions: {
-            export: { png: true, svg: true },
-            source: false,
-            compiled: false,
-            editor: false,
-          },
-          downloadFileName: "deseq2-sample-distance-heatmap",
-          scaleFactor: { png: 2, svg: 1 },
-        });
-        return;
+      const response = await fetch(dataPath);
+      if (!response.ok) {
+        throw new Error(`Failed to load ${dataPath}: ${response.status}`);
       }
 
-      embedResult.view.width(currentWidth);
-      embedResult.view.height(currentHeight);
-      await embedResult.view.runAsync();
-    };
+      const cells = await response.json();
+      const rowLabelBySample = new Map();
+      cells.forEach((cell) => {
+        if (!rowLabelBySample.has(cell.sample_y)) {
+          rowLabelBySample.set(cell.sample_y, cell.sample_y_label || cell.sample_y);
+        }
+      });
 
-    const scheduleResize = () => {
-      if (scheduled) {
-        return;
-      }
-      scheduled = true;
-      window.requestAnimationFrame(async () => {
-        scheduled = false;
+      const rowLabels = sampleOrder.map(
+        (sampleId) => rowLabelBySample.get(sampleId) || sampleId
+      );
+      const parsedRowLabels = rowLabels.map(parseRowLabel);
+      const metadataColors = buildMetadataColorMap(parsedRowLabels);
+      const hasTooltipMetadata = cells.some((cell) => (
+        (typeof cell.sample_x_metadata === "string" && cell.sample_x_metadata !== "")
+        || (typeof cell.sample_y_metadata === "string" && cell.sample_y_metadata !== "")
+      ));
+
+      renderDistanceLegend(legendNode, cells);
+
+      let embedResult = null;
+      let currentWidth = 0;
+      let currentHeight = 0;
+
+      const applySpecConfig = (renderSpec, plotSize) => {
+        renderSpec.width = plotSize.width;
+        renderSpec.height = plotSize.height;
+        renderSpec.padding = heatmapPadding;
+        renderSpec.data[0].values = cells;
+        renderSpec.legends = [];
+        renderSpec.axes = Array.isArray(renderSpec.axes)
+          ? renderSpec.axes.filter((axis) => axis.scale === "x")
+          : [];
+
+        const xScale = renderSpec.scales.find((scale) => scale.name === "x");
+        const yScale = renderSpec.scales.find((scale) => scale.name === "y");
+        if (xScale) {
+          xScale.domain = sampleOrder;
+          xScale.paddingInner = 0;
+          xScale.paddingOuter = 0;
+        }
+        if (yScale) {
+          yScale.domain = sampleOrder;
+          yScale.paddingInner = 0;
+          yScale.paddingOuter = 0;
+        }
+
+        const xAxis = renderSpec.axes.find((axis) => axis.scale === "x");
+        if (xAxis) {
+          xAxis.labelFontSize = sampleOrder.length >= 20 ? 11 : 13;
+          xAxis.labelAngle = 90;
+          xAxis.labelAlign = "left";
+          xAxis.labelBaseline = "middle";
+          xAxis.labelPadding = 6;
+          xAxis.title = null;
+        }
+
+        if (renderSpec.marks?.[0]?.encode?.update?.y) {
+          renderSpec.marks[0].encode.update.y.field = "sample_y";
+        }
+
+        if (renderSpec.marks?.[0]?.encode?.enter) {
+          renderSpec.marks[0].encode.enter.tooltip = hasTooltipMetadata
+            ? {
+                signal: "{'Sample A': datum.sample_x, 'Sample A metadata': datum.sample_x_metadata || 'NA', 'Sample B': datum.sample_y, 'Sample B metadata': datum.sample_y_metadata || 'NA', 'Distance': datum.distance == null ? 'NA' : format(datum.distance, '.4f')}"
+              }
+            : {
+                signal: "{'Sample A': datum.sample_x, 'Sample B': datum.sample_y, 'Distance': datum.distance == null ? 'NA' : format(datum.distance, '.4f')}"
+              };
+        }
+      };
+
+      const renderOrResize = async () => {
+        const availableWidth = measureWidth(plotShell);
+        if (availableWidth < 220) {
+          return;
+        }
+
+        const plotSize = computeHeatmapSize(availableWidth, sampleOrder.length);
+        renderRowLabels(
+          rowLabelNode,
+          parsedRowLabels,
+          metadataColors,
+          plotSize.height,
+          plotSize.rowHeight
+        );
+
+        if (
+          embedResult
+          && plotSize.width === currentWidth
+          && plotSize.height === currentHeight
+        ) {
+          return;
+        }
+
+        currentWidth = plotSize.width;
+        currentHeight = plotSize.height;
+
+        if (!embedResult) {
+          const renderSpec = JSON.parse(JSON.stringify(baseSpec));
+          applySpecConfig(renderSpec, plotSize);
+          embedResult = await vegaEmbed("#sample-distance-view", renderSpec, {
+            renderer: "canvas",
+            actions: {
+              export: { png: true, svg: true },
+              source: false,
+              compiled: false,
+              editor: false,
+            },
+            downloadFileName: "deseq2-sample-distance-heatmap",
+            scaleFactor: { png: 2, svg: 1 },
+          });
+          return;
+        }
+
+        embedResult.view.width(currentWidth);
+        embedResult.view.height(currentHeight);
+        await embedResult.view.runAsync();
+      };
+
+      scheduleViewResize(async () => {
         try {
           await renderOrResize();
         } catch (error) {
-          showError(error);
+          showError(errorNode, "The sample-distance heatmap", error);
         }
-      });
-    };
-
-    scheduleResize();
-    window.addEventListener("resize", scheduleResize);
-    if (typeof ResizeObserver === "function") {
-      const observer = new ResizeObserver(() => {
-        scheduleResize();
-      });
-      observer.observe(layout);
-      observer.observe(container);
+      }, [plotShell, plotShell.parentElement]);
+    } catch (error) {
+      showError(errorNode, "The sample-distance heatmap", error);
     }
-  } catch (error) {
-    showError(error);
-  }
+  };
+
+  const initializePca = async () => {
+    const container = document.getElementById("sample-pca-view");
+    const plotShell = container ? container.parentElement : null;
+    const specNode = document.getElementById("vega_sample_pca_spec");
+    const dataPathNode = document.getElementById("sample_pca_data_path");
+    const errorNode = document.getElementById("sample-pca-error");
+
+    if (!container || !plotShell || !specNode || !dataPathNode) {
+      return;
+    }
+
+    try {
+      const baseSpec = parseJsonNode(specNode, null);
+      const dataPath = parseJsonNode(dataPathNode, "");
+      if (!baseSpec || !dataPath) {
+        return;
+      }
+
+      const response = await fetch(dataPath);
+      if (!response.ok) {
+        throw new Error(`Failed to load ${dataPath}: ${response.status}`);
+      }
+
+      const payload = await response.json();
+      let points = Array.isArray(payload.points) ? payload.points : [];
+      if (points.length === 0) {
+        return;
+      }
+
+      const percentVariance = payload.percent_variance || {};
+      const groupField = typeof payload.group_field === "string"
+        ? payload.group_field
+        : "";
+      const groupLabel = typeof payload.group_label === "string"
+        ? payload.group_label
+        : "";
+      const distinctGroups = Array.from(
+        new Set(points.map((point) => point.group_value).filter(Boolean))
+      );
+      const hasGrouping = groupLabel !== "" && distinctGroups.length > 1;
+      const groupPalette = hasGrouping
+        ? buildGroupPalette(points, groupField)
+        : { domain: [], colors: new Map() };
+      if (hasGrouping) {
+        points = points.map((point) => {
+          const colors = groupPalette.colors.get(point.group_value) || {};
+          return {
+            ...point,
+            group_fill_color: colors.background || "#dbeafe",
+            group_stroke_color: colors.border || "#93c5fd",
+          };
+        });
+      }
+
+      let embedResult = null;
+      let currentWidth = 0;
+      let currentHeight = 0;
+      const pcaPadding = {
+        left: 22,
+        right: 12,
+        top: hasGrouping ? 24 : 12,
+        bottom: 50,
+      };
+
+      const applySpecConfig = (renderSpec, plotSize) => {
+        renderSpec.width = plotSize.width;
+        renderSpec.height = plotSize.height;
+        renderSpec.data[0].values = points;
+        renderSpec.padding = pcaPadding;
+
+        const xAxis = renderSpec.axes.find((axis) => axis.scale === "x");
+        const yAxis = renderSpec.axes.find((axis) => axis.scale === "y");
+        if (xAxis) {
+          xAxis.labelFontSize = 13;
+          xAxis.titleFontSize = 15;
+          xAxis.title = `PC1: ${formatPercent(Number(percentVariance.PC1))}% variance`;
+          xAxis.labelPadding = 4;
+          xAxis.titlePadding = 6;
+        }
+        if (yAxis) {
+          yAxis.labelFontSize = 13;
+          yAxis.titleFontSize = 15;
+          yAxis.title = `PC2: ${formatPercent(Number(percentVariance.PC2))}% variance`;
+          yAxis.labelPadding = 4;
+          yAxis.titlePadding = 4;
+        }
+
+        if (hasGrouping) {
+          const colorScale = renderSpec.scales.find((scale) => scale.name === "color");
+          if (colorScale) {
+            colorScale.domain = groupPalette.domain;
+            colorScale.range = groupPalette.domain.map((value) => (
+              groupPalette.colors.get(value)?.background || "#dbeafe"
+            ));
+          }
+          if (Array.isArray(renderSpec.legends) && renderSpec.legends[0]) {
+            renderSpec.legends[0].title = groupLabel;
+            renderSpec.legends[0].labelFontSize = 13;
+            renderSpec.legends[0].titleFontSize = 15;
+          }
+          if (renderSpec.marks?.[0]?.encode?.update?.fill) {
+            renderSpec.marks[0].encode.update.fill = {
+              scale: "color",
+              field: "group_value",
+            };
+          }
+          if (renderSpec.marks?.[0]?.encode?.update) {
+            renderSpec.marks[0].encode.update.stroke = {
+              field: "group_stroke_color",
+            };
+            renderSpec.marks[0].encode.update.strokeWidth = {
+              value: 1.5,
+            };
+          }
+        } else {
+          renderSpec.legends = [];
+          if (renderSpec.marks?.[0]?.encode?.update?.fill) {
+            renderSpec.marks[0].encode.update.fill = { value: "#2563eb" };
+          }
+          if (renderSpec.marks?.[0]?.encode?.update) {
+            renderSpec.marks[0].encode.update.stroke = { value: "#ffffff" };
+            renderSpec.marks[0].encode.update.strokeWidth = { value: 1.5 };
+          }
+        }
+      };
+
+      const renderOrResize = async () => {
+        const availableWidth = measureWidth(plotShell);
+        if (availableWidth < 220) {
+          return;
+        }
+
+        const plotSize = computePcaSize(availableWidth, pcaPadding);
+        if (
+          embedResult
+          && plotSize.width === currentWidth
+          && plotSize.height === currentHeight
+        ) {
+          return;
+        }
+
+        currentWidth = plotSize.width;
+        currentHeight = plotSize.height;
+
+        if (!embedResult) {
+          const renderSpec = JSON.parse(JSON.stringify(baseSpec));
+          applySpecConfig(renderSpec, plotSize);
+          embedResult = await vegaEmbed("#sample-pca-view", renderSpec, {
+            renderer: "canvas",
+            actions: {
+              export: { png: true, svg: true },
+              source: false,
+              compiled: false,
+              editor: false,
+            },
+            downloadFileName: "deseq2-sample-pca-plot",
+            scaleFactor: { png: 2, svg: 1 },
+          });
+          return;
+        }
+
+        embedResult.view.width(currentWidth);
+        embedResult.view.height(currentHeight);
+        await embedResult.view.runAsync();
+      };
+
+      scheduleViewResize(async () => {
+        try {
+          await renderOrResize();
+        } catch (error) {
+          showError(errorNode, "The sample PCA plot", error);
+        }
+      }, [plotShell, plotShell.parentElement]);
+    } catch (error) {
+      showError(errorNode, "The sample PCA plot", error);
+    }
+  };
+
+  await Promise.allSettled([initializeHeatmap(), initializePca()]);
 });

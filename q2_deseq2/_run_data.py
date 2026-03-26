@@ -29,6 +29,8 @@ class DESeq2RunResult(NamedTuple):
     selected_effect_specs: tuple[str, ...] = ()
     sample_distance_matrix: pd.DataFrame | None = None
     sample_distance_order: tuple[str, ...] = ()
+    sample_pca_scores: pd.DataFrame | None = None
+    sample_pca_percent_variance: tuple[float, float] = ()
 
 
 def _first_non_empty_string(value) -> str:
@@ -98,6 +100,15 @@ def _write_run_result(path: Path, run_result: DESeq2RunResult, alpha: float) -> 
             "\n".join(run_result.sample_distance_order) + "\n",
             encoding="utf-8",
         )
+    if run_result.sample_pca_scores is not None and not run_result.sample_pca_scores.empty:
+        sample_pca_scores = run_result.sample_pca_scores.copy()
+        sample_pca_scores.index = sample_pca_scores.index.map(str)
+        sample_pca_scores.columns = sample_pca_scores.columns.map(str)
+        sample_pca_scores.to_csv(
+            path / "sample_pca.tsv",
+            sep="\t",
+            index_label="sample_id",
+        )
     (path / "metadata.json").write_text(
         json.dumps(
             {
@@ -116,6 +127,9 @@ def _write_run_result(path: Path, run_result: DESeq2RunResult, alpha: float) -> 
                         if "effect_id" in run_result.results.columns
                         else ()
                     )
+                ),
+                "sample_pca_percent_variance": list(
+                    run_result.sample_pca_percent_variance
                 ),
                 "alpha": alpha,
             },
@@ -179,6 +193,25 @@ def _parse_run_results(
     elif sample_distance_matrix is not None:
         sample_distance_order = tuple(sample_distance_matrix.index.tolist())
 
+    sample_pca_scores_path = run_data_path / "sample_pca.tsv"
+    sample_pca_scores = None
+    if sample_pca_scores_path.exists():
+        sample_pca_scores = pd.read_csv(sample_pca_scores_path, sep="\t", index_col=0)
+        sample_pca_scores.index = sample_pca_scores.index.map(str)
+        sample_pca_scores.columns = sample_pca_scores.columns.map(str)
+        sample_pca_scores.index.name = None
+
+    sample_pca_percent_variance = ()
+    raw_percent_variance = metadata.get("sample_pca_percent_variance") or ()
+    if len(raw_percent_variance) >= 2:
+        try:
+            sample_pca_percent_variance = (
+                float(raw_percent_variance[0]),
+                float(raw_percent_variance[1]),
+            )
+        except (TypeError, ValueError):
+            sample_pca_percent_variance = ()
+
     sample_metadata_path = run_data_path / "sample_metadata.tsv"
     sample_metadata = None
     if sample_metadata_path.exists():
@@ -210,6 +243,8 @@ def _parse_run_results(
         selected_effect_specs=tuple(_unique_non_empty_values(selected_effect_specs)),
         sample_distance_matrix=sample_distance_matrix,
         sample_distance_order=sample_distance_order,
+        sample_pca_scores=sample_pca_scores,
+        sample_pca_percent_variance=sample_pca_percent_variance,
     )
 
     return run_result, alpha

@@ -96,6 +96,11 @@ class TestMethods(TestPluginBase):
                 columns=["Sample1", "Sample2"],
             ),
             sample_distance_order=("Sample2", "Sample1"),
+            sample_pca_scores=pd.DataFrame(
+                {"PC1": [-2.1, 2.1], "PC2": [0.4, -0.4]},
+                index=["Sample1", "Sample2"],
+            ),
+            sample_pca_percent_variance=(68.2, 21.5),
         )
 
     def test_prepare_inputs_infers_reference_for_two_level_metadata(self):
@@ -278,8 +283,10 @@ class TestMethods(TestPluginBase):
             "sample_distance_order_path <- get_arg(\"--sample-distance-order\")",
             script,
         )
+        self.assertIn("sample_pca_path <- get_arg(\"--sample-pca\")", script)
         self.assertIn("vsd <- vst(dds, blind = FALSE", script)
         self.assertIn("sample_hclust <- hclust(sample_dists)", script)
+        self.assertIn("sample_pca_df <- data.frame(", script)
         self.assertNotIn("--ma-plot", script)
         self.assertNotIn("--volcano-plot", script)
         self.assertNotIn("plotMA(", script)
@@ -292,6 +299,10 @@ class TestMethods(TestPluginBase):
         expected_normalized_counts = self.sample_run_result.normalized_counts
         expected_sample_distances = self.sample_run_result.sample_distance_matrix
         expected_sample_distance_order = self.sample_run_result.sample_distance_order
+        expected_sample_pca_scores = self.sample_run_result.sample_pca_scores
+        expected_sample_pca_percent_variance = (
+            self.sample_run_result.sample_pca_percent_variance
+        )
         captured = {}
 
         def _fake_run(cmd, check, capture_output, text):
@@ -308,6 +319,7 @@ class TestMethods(TestPluginBase):
             sample_distance_order_fp = Path(
                 cmd[cmd.index("--sample-distance-order") + 1]
             )
+            sample_pca_fp = Path(cmd[cmd.index("--sample-pca") + 1])
             summary_fp = Path(cmd[cmd.index("--summary") + 1])
             ma_plot_fp = Path(cmd[cmd.index("--ma-plot") + 1])
             results_names_fp = Path(cmd[cmd.index("--results-names") + 1])
@@ -337,6 +349,10 @@ class TestMethods(TestPluginBase):
                 "\n".join(expected_sample_distance_order) + "\n",
                 encoding="utf-8",
             )
+            expected_sample_pca_scores.assign(
+                percent_variance_pc1=expected_sample_pca_percent_variance[0],
+                percent_variance_pc2=expected_sample_pca_percent_variance[1],
+            ).to_csv(sample_pca_fp, sep="\t", index_label="sample_id")
             results_names_fp.write_text(
                 "Intercept\ncondition_treated_vs_control\n",
                 encoding="utf-8",
@@ -372,6 +388,11 @@ class TestMethods(TestPluginBase):
         assert_frame_equal(observed.sample_metadata, captured["sample_metadata"])
         assert_frame_equal(observed.sample_distance_matrix, expected_sample_distances)
         self.assertEqual(observed.sample_distance_order, expected_sample_distance_order)
+        assert_frame_equal(observed.sample_pca_scores, expected_sample_pca_scores)
+        self.assertEqual(
+            observed.sample_pca_percent_variance,
+            expected_sample_pca_percent_variance,
+        )
         self.assertEqual(
             observed.default_effect_id, "contrast::condition::other::control"
         )
@@ -402,6 +423,10 @@ class TestMethods(TestPluginBase):
         expected_normalized_counts = self.sample_run_result.normalized_counts
         expected_sample_distances = self.sample_run_result.sample_distance_matrix
         expected_sample_distance_order = self.sample_run_result.sample_distance_order
+        expected_sample_pca_scores = self.sample_run_result.sample_pca_scores
+        expected_sample_pca_percent_variance = (
+            self.sample_run_result.sample_pca_percent_variance
+        )
         captured = {}
 
         def _fake_run(cmd, check, capture_output, text):
@@ -412,6 +437,7 @@ class TestMethods(TestPluginBase):
             sample_distance_order_fp = Path(
                 cmd[cmd.index("--sample-distance-order") + 1]
             )
+            sample_pca_fp = Path(cmd[cmd.index("--sample-pca") + 1])
             summary_fp = Path(cmd[cmd.index("--summary") + 1])
             ma_plot_fp = Path(cmd[cmd.index("--ma-plot") + 1])
             results_names_fp = Path(cmd[cmd.index("--results-names") + 1])
@@ -446,6 +472,10 @@ class TestMethods(TestPluginBase):
                 "\n".join(expected_sample_distance_order) + "\n",
                 encoding="utf-8",
             )
+            expected_sample_pca_scores.assign(
+                percent_variance_pc1=expected_sample_pca_percent_variance[0],
+                percent_variance_pc2=expected_sample_pca_percent_variance[1],
+            ).to_csv(sample_pca_fp, sep="\t", index_label="sample_id")
             results_names_fp.write_text(
                 "Intercept\ngenotype_nonKO_vs_KO\ntreatment_compoundA_vs_dmso\n",
                 encoding="utf-8",
@@ -472,6 +502,11 @@ class TestMethods(TestPluginBase):
         assert_frame_equal(observed.sample_metadata, captured["sample_metadata"])
         assert_frame_equal(observed.sample_distance_matrix, expected_sample_distances)
         self.assertEqual(observed.sample_distance_order, expected_sample_distance_order)
+        assert_frame_equal(observed.sample_pca_scores, expected_sample_pca_scores)
+        self.assertEqual(
+            observed.sample_pca_percent_variance,
+            expected_sample_pca_percent_variance,
+        )
         self.assertEqual(
             observed.default_effect_id,
             "simple::genotype::nonKO::KO|within::treatment::compoundA",

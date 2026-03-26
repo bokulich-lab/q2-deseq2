@@ -12,10 +12,15 @@
 }
 
 #volcano-view,
-#ma-view,
-#sample-distance-view {
+#ma-view {
   width: 100%;
   min-height: 520px;
+}
+
+#sample-distance-view {
+  width: 100%;
+  min-height: 260px;
+  min-width: 0;
 }
 
 .results-actions {
@@ -112,8 +117,59 @@
   padding: 12px;
 }
 
-.heatmap-scroll {
-  overflow: auto;
+.sample-distance-layout {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
+  width: 100%;
+}
+
+.sample-distance-row-labels {
+  display: grid;
+  min-width: 0;
+}
+
+.sample-distance-row-label {
+  align-items: center;
+  color: #111827;
+  display: flex;
+  font-size: 12px;
+  justify-content: flex-end;
+  min-width: 0;
+  overflow: hidden;
+  padding-right: 6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sample-distance-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+  max-width: 220px;
+}
+
+.sample-distance-legend-title {
+  color: #111827;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sample-distance-legend-bar {
+  background: linear-gradient(90deg, #08306b 0%, #6baed6 55%, #deebf7 100%);
+  border-radius: 999px;
+  height: 12px;
+  width: 100%;
+}
+
+.sample-distance-legend-scale {
+  color: #4b5563;
+  display: flex;
+  font-size: 11px;
+  justify-content: space-between;
+  line-height: 1.1;
   width: 100%;
 }
 

@@ -54,29 +54,27 @@
     {
       "orient": "bottom",
       "scale": "x",
-      "labelAngle": -50,
-      "labelAlign": "right",
+      "labelAngle": 90,
+      "labelAlign": "left",
       "labelBaseline": "middle",
       "labelLimit": 180,
-      "labelFontSize": 12,
-      "title": "Sample",
-      "titlePadding": 16
+      "labelFontSize": 12
     },
     {
       "orient": "left",
       "scale": "y",
       "labelLimit": 180,
-      "labelFontSize": 12,
-      "title": "Sample",
-      "titlePadding": 16
+      "labelFontSize": 12
     }
   ],
   "legends": [
     {
       "fill": "color",
-      "orient": "right",
+      "orient": "top",
+      "direction": "horizontal",
       "title": "Sample distance",
-      "gradientLength": 220
+      "gradientLength": 180,
+      "gradientThickness": 12
     }
   ],
   "marks": [

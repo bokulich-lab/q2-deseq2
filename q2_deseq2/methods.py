@@ -785,6 +785,7 @@ def _run_deseq2_with_frames(
         reference_levels_fp = temp_path / "reference_levels.txt"
         effect_specs_fp = temp_path / "effect_specs.txt"
         script_fp = temp_path / "run_deseq2.R"
+        ma_plot_fp = temp_path / "ma_plot.png"
 
         counts_df.to_csv(counts_fp, sep="\t", index_label="feature_id")
         coldata_df.to_csv(coldata_fp, sep="\t", index_label="sample_id")
@@ -809,6 +810,8 @@ def _run_deseq2_with_frames(
             str(sample_distance_order_fp),
             "--summary",
             str(summary_fp),
+            "--ma-plot",
+            str(ma_plot_fp),
             "--results-names",
             str(results_names_fp),
             "--reference-levels",

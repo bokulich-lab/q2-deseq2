@@ -293,32 +293,38 @@ class TestVisualizers(TestPluginBase):
             visualizers._prepare_sample_distance_payload(
                 self.sample_distance_matrix,
                 ("Sample2", "Sample1"),
+                sample_metadata=self.sample_metadata,
+                reference_levels=("condition::control",),
             )
         )
 
         self.assertEqual(payload[0]["sample_x"], "Sample2")
         self.assertEqual(payload[0]["sample_y"], "Sample2")
+        self.assertEqual(
+            payload[0]["sample_y_label"],
+            "Sample2 | condition=treated | batch=B",
+        )
         self.assertEqual(payload[1]["sample_x"], "Sample1")
         self.assertEqual(payload[1]["sample_y"], "Sample2")
         self.assertEqual(payload[1]["distance"], 1.75)
+        self.assertEqual(payload[1]["sample_x_metadata"], "condition=control; batch=A")
+        self.assertEqual(payload[1]["sample_y_metadata"], "condition=treated; batch=B")
 
-    def test_prepare_sample_annotation_payload_prioritizes_reference_columns(self):
-        payload = visualizers._prepare_sample_annotation_payload(
+    def test_build_sample_label_map_prioritizes_reference_columns(self):
+        sample_labels, sample_metadata_text = visualizers._build_sample_label_map(
             self.sample_metadata,
             ["Sample2", "Sample1"],
             ("condition::control",),
         )
 
         self.assertEqual(
-            [field["field"] for field in payload["fields"]],
-            ["condition", "batch"],
+            sample_labels["Sample2"],
+            "Sample2 | condition=treated | batch=B",
         )
         self.assertEqual(
-            payload["fields"][0]["label"], "condition (ref: control)"
+            sample_metadata_text["Sample1"],
+            "condition=control; batch=A",
         )
-        self.assertEqual(payload["records"][0]["sample_id"], "Sample2")
-        self.assertEqual(payload["records"][0]["field"], "condition")
-        self.assertEqual(payload["records"][0]["value"], "treated")
 
     def test_write_visualization_output_renders_tabbed_report(self):
         captured = {}
@@ -349,7 +355,6 @@ class TestVisualizers(TestPluginBase):
             self.assertFalse((output_path / "volcano_plot.png").exists())
             self.assertTrue((output_path / "data" / "results_table.json").exists())
             self.assertTrue((output_path / "data" / "sample_distances.json").exists())
-            self.assertTrue((output_path / "data" / "sample_annotations.json").exists())
             self.assertTrue((output_path / "css" / "styles.css").exists())
             self.assertTrue((output_path / "js" / "linked_plots.js").exists())
             self.assertTrue((output_path / "js" / "sample_distances.js").exists())
@@ -366,11 +371,6 @@ class TestVisualizers(TestPluginBase):
             )
             sample_distance_payload = json.loads(
                 (output_path / "data" / "sample_distances.json").read_text(
-                    encoding="utf-8"
-                )
-            )
-            sample_annotation_payload = json.loads(
-                (output_path / "data" / "sample_annotations.json").read_text(
                     encoding="utf-8"
                 )
             )
@@ -399,15 +399,13 @@ class TestVisualizers(TestPluginBase):
             len(json.loads(captured["context"]["effect_options_json"])), 2
         )
         self.assertTrue(captured["context"]["include_sample_metadata_file"])
-        self.assertTrue(captured["context"]["has_sample_annotations"])
-        self.assertEqual(captured["context"]["sample_annotation_field_count"], 2)
         self.assertEqual(report_payload["columns"][0], "feature_id")
         self.assertEqual(len(report_payload["data"]), 6)
         self.assertIn("effect_id", report_payload["columns"])
         self.assertEqual(len(sample_distance_payload), 4)
         self.assertEqual(
-            [field["field"] for field in sample_annotation_payload["fields"]],
-            ["condition", "batch"],
+            sample_distance_payload[0]["sample_y_label"],
+            "Sample2 | condition=treated | batch=B",
         )
         self.assertEqual(
             json.loads(captured["context"]["sample_distance_order_json"]),
@@ -443,7 +441,6 @@ class TestVisualizers(TestPluginBase):
             self.assertFalse((output_path / "sample_distances.tsv").exists())
             self.assertFalse((output_path / "sample_metadata.tsv").exists())
             self.assertFalse((output_path / "data" / "sample_distances.json").exists())
-            self.assertFalse((output_path / "data" / "sample_annotations.json").exists())
 
         self.assertEqual(
             [Path(template).name for template in captured["templates"]],

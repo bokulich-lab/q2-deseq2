@@ -309,12 +309,14 @@ class TestMethods(TestPluginBase):
                 cmd[cmd.index("--sample-distance-order") + 1]
             )
             summary_fp = Path(cmd[cmd.index("--summary") + 1])
+            ma_plot_fp = Path(cmd[cmd.index("--ma-plot") + 1])
             results_names_fp = Path(cmd[cmd.index("--results-names") + 1])
             reference_levels_fp = Path(cmd[cmd.index("--reference-levels") + 1])
             effect_specs_fp = Path(cmd[cmd.index("--effect-specs") + 1])
 
             self.assertTrue(counts_fp.exists())
             self.assertTrue(coldata_fp.exists())
+            self.assertEqual(ma_plot_fp.name, "ma_plot.png")
             captured["sample_metadata"] = pd.read_csv(coldata_fp, sep="\t", index_col=0)
             captured["sample_metadata"].index.name = None
             self.assertEqual(cmd[cmd.index("--fixed-effects-formula") + 1], "condition")
@@ -361,7 +363,7 @@ class TestMethods(TestPluginBase):
         self.assertIn("mean", command)
         self.assertIn("--alpha", command)
         self.assertIn("0.01", command)
-        self.assertNotIn("--ma-plot", command)
+        self.assertIn("--ma-plot", command)
         self.assertNotIn("--volcano-plot", command)
         self.assertIn("false", command)
         assert_frame_equal(observed.results, expected_results)
@@ -411,9 +413,11 @@ class TestMethods(TestPluginBase):
                 cmd[cmd.index("--sample-distance-order") + 1]
             )
             summary_fp = Path(cmd[cmd.index("--summary") + 1])
+            ma_plot_fp = Path(cmd[cmd.index("--ma-plot") + 1])
             results_names_fp = Path(cmd[cmd.index("--results-names") + 1])
             reference_levels_fp = Path(cmd[cmd.index("--reference-levels") + 1])
             effect_specs_fp = Path(cmd[cmd.index("--effect-specs") + 1])
+            self.assertEqual(ma_plot_fp.name, "ma_plot.png")
             captured["sample_metadata"] = pd.read_csv(coldata_fp, sep="\t", index_col=0)
             captured["sample_metadata"].index.name = None
 
@@ -479,7 +483,7 @@ class TestMethods(TestPluginBase):
             observed.available_results_names,
             ("Intercept", "genotype_nonKO_vs_KO", "treatment_compoundA_vs_dmso"),
         )
-        self.assertNotIn("--ma-plot", run_mock.call_args.args[0])
+        self.assertIn("--ma-plot", run_mock.call_args.args[0])
         self.assertNotIn("--volcano-plot", run_mock.call_args.args[0])
 
     @patch("q2_deseq2.methods.run")

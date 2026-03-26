@@ -346,12 +346,20 @@ def _resolve_sample_distance_order(
 
 
 def _prepare_sample_distance_payload(
-    sample_distance_matrix: pd.DataFrame, sample_distance_order: tuple[str, ...]
+    sample_distance_matrix: pd.DataFrame,
+    sample_distance_order: tuple[str, ...],
+    sample_metadata: pd.DataFrame | None = None,
+    reference_levels: tuple[str, ...] = (),
 ) -> str:
     matrix = sample_distance_matrix.copy()
     matrix.index = matrix.index.map(str)
     matrix.columns = matrix.columns.map(str)
     ordered_ids = _resolve_sample_distance_order(matrix, sample_distance_order)
+    sample_labels, sample_metadata_text = _build_sample_label_map(
+        sample_metadata=sample_metadata,
+        ordered_sample_ids=ordered_ids,
+        reference_levels=reference_levels,
+    )
 
     records = []
     for sample_y in ordered_ids:
@@ -364,8 +372,11 @@ def _prepare_sample_distance_payload(
                 {
                     "sample_x": sample_x,
                     "sample_y": sample_y,
+                    "sample_y_label": sample_labels.get(sample_y, sample_y),
                     "distance": _value_or_none(matrix.at[sample_y, sample_x]),
                     "is_diagonal": sample_x == sample_y,
+                    "sample_x_metadata": sample_metadata_text.get(sample_x, ""),
+                    "sample_y_metadata": sample_metadata_text.get(sample_y, ""),
                 }
             )
 
@@ -381,13 +392,13 @@ def _reference_level_map(reference_levels: tuple[str, ...]) -> dict[str, str]:
     return mapping
 
 
-def _prepare_sample_annotation_payload(
+def _build_sample_label_map(
     sample_metadata: pd.DataFrame | None,
     ordered_sample_ids: list[str],
     reference_levels: tuple[str, ...],
-) -> dict[str, list[dict[str, str | None]]]:
+) -> tuple[dict[str, str], dict[str, str]]:
     if sample_metadata is None or sample_metadata.empty:
-        return {"fields": [], "records": []}
+        return {}, {}
 
     metadata = sample_metadata.copy()
     metadata.index = metadata.index.map(str)
@@ -416,33 +427,25 @@ def _prepare_sample_annotation_payload(
             ordered_columns.append(column)
             seen_columns.add(column)
 
-    fields = []
-    records = []
-    for column in ordered_columns:
-        reference_level = reference_map.get(column, "")
-        label = column if not reference_level else f"{column} (ref: {reference_level})"
-        fields.append(
-            {
-                "field": column,
-                "label": label,
-                "reference_level": reference_level,
-            }
-        )
-        for sample_id in available_sample_ids:
+    sample_labels = {}
+    sample_metadata_text = {}
+    for sample_id in available_sample_ids:
+        parts = []
+        for column in ordered_columns:
             value = metadata.at[sample_id, column]
-            normalized_value = None
-            if not pd.isna(value):
-                text = str(value).strip()
-                normalized_value = text or None
-            records.append(
-                {
-                    "sample_id": sample_id,
-                    "field": column,
-                    "value": normalized_value,
-                }
-            )
+            if pd.isna(value):
+                continue
+            text = str(value).strip()
+            if not text:
+                continue
+            parts.append(f"{column}={text}")
 
-    return {"fields": fields, "records": records}
+        sample_metadata_text[sample_id] = "; ".join(parts)
+        sample_labels[sample_id] = (
+            sample_id if not parts else f"{sample_id} | " + " | ".join(parts)
+        )
+
+    return sample_labels, sample_metadata_text
 
 
 def _copy_report_assets(output_dir: Path) -> None:
@@ -485,27 +488,19 @@ def _render_report(
         sample_distance_matrix is not None and not sample_distance_matrix.empty
     )
     ordered_sample_ids = []
-    sample_annotation_payload = {"fields": [], "records": []}
     if has_sample_distance_heatmap:
         ordered_sample_ids = _resolve_sample_distance_order(
             sample_distance_matrix, sample_distance_order
         )
         (data_dir / "sample_distances.json").write_text(
             _prepare_sample_distance_payload(
-                sample_distance_matrix, sample_distance_order
+                sample_distance_matrix,
+                sample_distance_order,
+                sample_metadata=sample_metadata,
+                reference_levels=reference_levels,
             ),
             encoding="utf-8",
         )
-        sample_annotation_payload = _prepare_sample_annotation_payload(
-            sample_metadata=sample_metadata,
-            ordered_sample_ids=ordered_sample_ids,
-            reference_levels=reference_levels,
-        )
-        if sample_annotation_payload["fields"]:
-            (data_dir / "sample_annotations.json").write_text(
-                json.dumps(sample_annotation_payload).replace("NaN", "null"),
-                encoding="utf-8",
-            )
 
     volcano_spec = _load_vega_spec("volcano")
     volcano_spec["signals"][0]["value"] = alpha
@@ -554,17 +549,8 @@ def _render_report(
         context["sample_distances_data_path_json"] = json.dumps(
             "data/sample_distances.json"
         )
-        context["sample_annotations_data_path_json"] = json.dumps(
-            "data/sample_annotations.json"
-            if sample_annotation_payload["fields"]
-            else ""
-        )
         context["sample_distance_order_json"] = json.dumps(ordered_sample_ids)
         context["sample_distance_sample_count"] = len(ordered_sample_ids)
-        context["has_sample_annotations"] = bool(sample_annotation_payload["fields"])
-        context["sample_annotation_field_count"] = len(
-            sample_annotation_payload["fields"]
-        )
     q2templates.render(templates, str(output_dir), context=context)
 
 

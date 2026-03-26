@@ -76,17 +76,112 @@ document.addEventListener("DOMContentLoaded", async () => {
     `;
   };
 
-  const renderRowLabels = (rowLabels, plotHeight, rowHeight) => {
-    rowLabelNode.innerHTML = "";
-    rowLabelNode.style.gridTemplateRows = `repeat(${rowLabels.length}, ${rowHeight}px)`;
-    rowLabelNode.style.paddingTop = `${Math.max(0, (plotHeight - rowLabels.length * rowHeight) / 2)}px`;
+  const parseRowLabel = (label) => {
+    const normalized = String(label || "");
+    const parts = normalized
+      .split("|")
+      .map((part) => part.trim())
+      .filter((part) => part !== "");
 
-    rowLabels.forEach((label) => {
+    const sampleId = parts[0] || normalized;
+    const metadata = parts.slice(1).map((part) => {
+      const separatorIndex = part.indexOf("=");
+      if (separatorIndex === -1) {
+        return {
+          field: "",
+          value: part,
+          raw: part,
+        };
+      }
+      return {
+        field: part.slice(0, separatorIndex).trim(),
+        value: part.slice(separatorIndex + 1).trim(),
+        raw: part,
+      };
+    });
+
+    return {
+      raw: normalized,
+      sampleId,
+      metadata,
+    };
+  };
+
+  const buildMetadataColorMap = (parsedRowLabels) => {
+    const valuesByField = new Map();
+    parsedRowLabels.forEach(({ metadata }) => {
+      metadata.forEach(({ field, value }) => {
+        const fieldKey = field || "_metadata";
+        if (!valuesByField.has(fieldKey)) {
+          valuesByField.set(fieldKey, []);
+        }
+        if (!valuesByField.get(fieldKey).includes(value)) {
+          valuesByField.get(fieldKey).push(value);
+        }
+      });
+    });
+
+    const colorsByField = new Map();
+    Array.from(valuesByField.entries()).forEach(([field, values], fieldIndex) => {
+      const colorsByValue = new Map();
+      values.forEach((value, valueIndex) => {
+        const hue = (fieldIndex * 97 + valueIndex * 41) % 360;
+        const saturation = 72;
+        const lightness = 88 - (valueIndex % 3) * 7;
+        colorsByValue.set(value, {
+          background: `hsl(${hue} ${saturation}% ${lightness}%)`,
+          border: `hsl(${hue} ${Math.max(42, saturation - 18)}% ${Math.max(52, lightness - 18)}%)`,
+          text: `hsl(${hue} 48% 22%)`,
+        });
+      });
+      colorsByField.set(field, colorsByValue);
+    });
+
+    return colorsByField;
+  };
+
+  const renderRowLabels = (
+    parsedRowLabels,
+    metadataColors,
+    plotHeight,
+    rowHeight
+  ) => {
+    rowLabelNode.innerHTML = "";
+    rowLabelNode.style.gridTemplateRows = `repeat(${parsedRowLabels.length}, ${rowHeight}px)`;
+    rowLabelNode.style.paddingTop = `${Math.max(0, (plotHeight - parsedRowLabels.length * rowHeight) / 2)}px`;
+
+    parsedRowLabels.forEach((row) => {
       const item = document.createElement("div");
       item.className = "sample-distance-row-label";
       item.style.height = `${rowHeight}px`;
-      item.textContent = label;
-      item.title = label;
+      item.title = row.raw;
+
+      const sample = document.createElement("span");
+      sample.className = "sample-distance-row-sample";
+      sample.textContent = row.sampleId;
+      item.append(sample);
+
+      row.metadata.forEach((entry) => {
+        const separator = document.createElement("span");
+        separator.className = "sample-distance-row-separator";
+        separator.textContent = "|";
+        item.append(separator);
+
+        const badge = document.createElement("span");
+        badge.className = "sample-distance-row-meta";
+        badge.textContent = entry.value || entry.raw;
+        badge.title = entry.raw;
+
+        const fieldKey = entry.field || "_metadata";
+        const color = metadataColors.get(fieldKey)?.get(entry.value);
+        if (color) {
+          badge.style.setProperty("--sample-distance-meta-bg", color.background);
+          badge.style.setProperty("--sample-distance-meta-border", color.border);
+          badge.style.setProperty("--sample-distance-meta-text", color.text);
+        }
+        item.append(badge);
+      });
+
       rowLabelNode.append(item);
     });
   };
@@ -125,6 +220,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     const rowLabels = sampleOrder.map(
       (sampleId) => rowLabelBySample.get(sampleId) || sampleId
     );
+    const parsedRowLabels = rowLabels.map(parseRowLabel);
+    const metadataColors = buildMetadataColorMap(parsedRowLabels);
     const hasTooltipMetadata = cells.some((cell) => (
       (typeof cell.sample_x_metadata === "string" && cell.sample_x_metadata !== "")
       || (typeof cell.sample_y_metadata === "string" && cell.sample_y_metadata !== "")
@@ -194,7 +291,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
 
       const plotSize = computePlotSize(availableWidth, sampleOrder.length);
-      renderRowLabels(rowLabels, plotSize.height, plotSize.rowHeight);
+      renderRowLabels(
+        parsedRowLabels,
+        metadataColors,
+        plotSize.height,
+        plotSize.rowHeight
+      );
 
       if (
         embedResult

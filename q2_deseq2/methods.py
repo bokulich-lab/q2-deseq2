@@ -13,6 +13,7 @@ import tempfile
 import textwrap
 
 import biom
+import numpy as np
 import pandas as pd
 from pandas.api.types import is_numeric_dtype
 
@@ -267,6 +268,287 @@ def _prepare_model_inputs(
     )
 
 
+def _compute_normalized_counts(
+    counts_df: pd.DataFrame, size_factors: pd.Series
+) -> pd.DataFrame:
+    aligned_size_factors = size_factors.reindex(counts_df.columns.map(str))
+    missing_samples = aligned_size_factors[aligned_size_factors.isna()].index.tolist()
+    if missing_samples:
+        missing_display = ", ".join(missing_samples)
+        raise RuntimeError(
+            "DESeq2 completed but did not return size factors for sample(s): "
+            f"{missing_display}."
+        )
+
+    normalized = counts_df.div(aligned_size_factors.astype(float), axis=1)
+    normalized.index = normalized.index.map(str)
+    normalized.columns = normalized.columns.map(str)
+    normalized.insert(0, "feature_id", normalized.index)
+    normalized = normalized.reset_index(drop=True)
+    normalized.columns.name = None
+    return normalized
+
+
+def _compute_sample_distance_matrix(vst_counts: pd.DataFrame) -> pd.DataFrame:
+    sample_ids = vst_counts.columns.map(str)
+    sample_matrix = vst_counts.to_numpy(dtype=float).T
+    squared_norms = np.sum(sample_matrix * sample_matrix, axis=1, keepdims=True)
+    squared_distances = squared_norms + squared_norms.T - 2 * (
+        sample_matrix @ sample_matrix.T
+    )
+    squared_distances = np.maximum(squared_distances, 0.0)
+    distances = np.sqrt(squared_distances)
+    return pd.DataFrame(distances, index=sample_ids, columns=sample_ids)
+
+
+def _compute_sample_distance_order(
+    sample_distance_matrix: pd.DataFrame,
+) -> tuple[str, ...]:
+    sample_ids = tuple(sample_distance_matrix.index.map(str))
+    sample_count = len(sample_ids)
+    if sample_count < 2:
+        return sample_ids
+
+    distances = sample_distance_matrix.to_numpy(dtype=float)
+    clusters = {
+        index: {"order": (index,), "height": 0.0}
+        for index in range(sample_count)
+    }
+    cluster_distances = {
+        (left, right): float(distances[left, right])
+        for left in range(sample_count)
+        for right in range(left + 1, sample_count)
+    }
+
+    active_clusters = list(range(sample_count))
+    next_cluster_id = sample_count
+
+    while len(active_clusters) > 1:
+        best_pair = None
+        best_key = None
+        active_clusters_sorted = sorted(
+            active_clusters, key=lambda cluster_id: clusters[cluster_id]["order"]
+        )
+        for left_index, left_cluster in enumerate(active_clusters_sorted[:-1]):
+            for right_cluster in active_clusters_sorted[left_index + 1 :]:
+                pair = (
+                    (left_cluster, right_cluster)
+                    if left_cluster < right_cluster
+                    else (right_cluster, left_cluster)
+                )
+                candidate_key = (
+                    cluster_distances[pair],
+                    clusters[left_cluster]["order"],
+                    clusters[right_cluster]["order"],
+                )
+                if best_key is None or candidate_key < best_key:
+                    best_key = candidate_key
+                    best_pair = pair
+
+        if best_pair is None or best_key is None:
+            break
+
+        left_cluster, right_cluster = sorted(
+            best_pair,
+            key=lambda cluster_id: (
+                clusters[cluster_id]["height"],
+                clusters[cluster_id]["order"],
+            ),
+        )
+        merged_order = (
+            clusters[left_cluster]["order"] + clusters[right_cluster]["order"]
+        )
+        merged_height = float(best_key[0])
+        clusters[next_cluster_id] = {
+            "order": merged_order,
+            "height": merged_height,
+        }
+
+        remaining_clusters = [
+            cluster_id
+            for cluster_id in active_clusters
+            if cluster_id not in best_pair
+        ]
+        for other_cluster in remaining_clusters:
+            left_distance = cluster_distances[
+                (
+                    (left_cluster, other_cluster)
+                    if left_cluster < other_cluster
+                    else (other_cluster, left_cluster)
+                )
+            ]
+            right_distance = cluster_distances[
+                (
+                    (right_cluster, other_cluster)
+                    if right_cluster < other_cluster
+                    else (other_cluster, right_cluster)
+                )
+            ]
+            pair = (
+                (other_cluster, next_cluster_id)
+                if other_cluster < next_cluster_id
+                else (next_cluster_id, other_cluster)
+            )
+            cluster_distances[pair] = max(left_distance, right_distance)
+
+        active_clusters = remaining_clusters + [next_cluster_id]
+        next_cluster_id += 1
+
+    final_order = clusters[active_clusters[0]]["order"]
+    return tuple(sample_ids[index] for index in final_order)
+
+
+def _compute_sample_pca(
+    vst_counts: pd.DataFrame,
+) -> tuple[pd.DataFrame, tuple[float, float]]:
+    sample_ids = vst_counts.columns.map(str)
+    sample_count = len(sample_ids)
+    if sample_count == 0:
+        return pd.DataFrame(columns=["PC1", "PC2"]), ()
+
+    ntop = min(500, vst_counts.shape[0])
+    if ntop == 0:
+        empty_scores = pd.DataFrame(
+            {"PC1": np.zeros(sample_count), "PC2": np.zeros(sample_count)},
+            index=sample_ids,
+        )
+        empty_scores.index.name = None
+        return empty_scores, ()
+
+    matrix = vst_counts.to_numpy(dtype=float)
+    ddof = 1 if sample_count > 1 else 0
+    row_variances = np.var(matrix, axis=1, ddof=ddof)
+    selected_rows = np.argsort(-row_variances, kind="mergesort")[:ntop]
+    selected_matrix = matrix[selected_rows, :].T
+    centered_matrix = selected_matrix - selected_matrix.mean(axis=0, keepdims=True)
+
+    if centered_matrix.size == 0:
+        singular_values = np.array([], dtype=float)
+        sample_scores = np.zeros((sample_count, 0), dtype=float)
+    else:
+        left_singular_vectors, singular_values, _ = np.linalg.svd(
+            centered_matrix, full_matrices=False
+        )
+        sample_scores = left_singular_vectors * singular_values
+
+    explained_variance = singular_values * singular_values
+    total_variance = float(explained_variance.sum())
+    if total_variance > 0:
+        percent_variance = explained_variance / total_variance
+    else:
+        percent_variance = np.zeros(max(1, len(singular_values)), dtype=float)
+        percent_variance[0] = 1.0
+
+    pc1_values = (
+        sample_scores[:, 0]
+        if sample_scores.shape[1] >= 1
+        else np.zeros(sample_count, dtype=float)
+    )
+    pc2_values = (
+        sample_scores[:, 1]
+        if sample_scores.shape[1] >= 2
+        else np.zeros(sample_count, dtype=float)
+    )
+    percent_pc1 = (
+        float(percent_variance[0] * 100) if len(percent_variance) >= 1 else 0.0
+    )
+    percent_pc2 = (
+        float(percent_variance[1] * 100) if len(percent_variance) >= 2 else 0.0
+    )
+
+    sample_pca_scores = pd.DataFrame(
+        {"PC1": pc1_values, "PC2": pc2_values},
+        index=sample_ids,
+    )
+    sample_pca_scores.index.name = None
+    return sample_pca_scores, (percent_pc1, percent_pc2)
+
+
+def _compute_count_matrix_heatmap(
+    vst_counts: pd.DataFrame,
+    normalized_counts: pd.DataFrame,
+    sample_distance_order: tuple[str, ...],
+) -> pd.DataFrame:
+    ordered_sample_ids = [
+        sample_id
+        for sample_id in sample_distance_order
+        if sample_id in vst_counts.columns
+    ]
+    if not ordered_sample_ids:
+        ordered_sample_ids = list(vst_counts.columns.map(str))
+
+    normalized_by_feature = normalized_counts.set_index("feature_id")
+    feature_means = normalized_by_feature.mean(axis=1)
+    top_heatmap_n = min(100, len(feature_means))
+    selected_feature_ids = feature_means.sort_values(
+        ascending=False, kind="mergesort"
+    ).index[:top_heatmap_n]
+    heatmap = vst_counts.loc[selected_feature_ids, ordered_sample_ids].copy()
+    heatmap.index = heatmap.index.map(str)
+    heatmap.columns = heatmap.columns.map(str)
+    heatmap.index.name = None
+    heatmap.columns.name = None
+    return heatmap
+
+
+def _compute_run_analytics(
+    counts_df: pd.DataFrame,
+    size_factors: pd.Series,
+    vst_counts: pd.DataFrame,
+) -> tuple[
+    pd.DataFrame,
+    pd.DataFrame,
+    tuple[str, ...],
+    pd.DataFrame,
+    tuple[float, float],
+    pd.DataFrame,
+]:
+    expected_sample_ids = list(counts_df.columns.map(str))
+    missing_vst_samples = [
+        sample_id for sample_id in expected_sample_ids if sample_id not in vst_counts.columns
+    ]
+    if missing_vst_samples:
+        missing_display = ", ".join(missing_vst_samples)
+        raise RuntimeError(
+            "DESeq2 completed but the VST matrix is missing sample(s): "
+            f"{missing_display}."
+        )
+
+    expected_feature_ids = list(counts_df.index.map(str))
+    missing_vst_features = [
+        feature_id for feature_id in expected_feature_ids if feature_id not in vst_counts.index
+    ]
+    if missing_vst_features:
+        missing_display = ", ".join(missing_vst_features[:10])
+        if len(missing_vst_features) > 10:
+            missing_display += ", ..."
+        raise RuntimeError(
+            "DESeq2 completed but the VST matrix is missing feature(s): "
+            f"{missing_display}."
+        )
+
+    vst_counts = vst_counts.loc[expected_feature_ids, expected_sample_ids]
+    normalized_counts = _compute_normalized_counts(counts_df, size_factors)
+    sample_distance_matrix = _compute_sample_distance_matrix(vst_counts)
+    sample_distance_matrix.index.name = None
+    sample_distance_matrix.columns.name = None
+    sample_distance_order = _compute_sample_distance_order(sample_distance_matrix)
+    sample_pca_scores, sample_pca_percent_variance = _compute_sample_pca(vst_counts)
+    count_matrix_heatmap = _compute_count_matrix_heatmap(
+        vst_counts,
+        normalized_counts,
+        sample_distance_order,
+    )
+    return (
+        normalized_counts,
+        sample_distance_matrix,
+        sample_distance_order,
+        sample_pca_scores,
+        sample_pca_percent_variance,
+        count_matrix_heatmap,
+    )
+
+
 def _write_lines(path: Path, lines: list[str]) -> None:
     payload = "\n".join(lines)
     if payload:
@@ -419,11 +701,8 @@ def _write_r_script(script_fp: Path) -> None:
         counts_path <- get_arg("--counts")
         coldata_path <- get_arg("--coldata")
         results_path <- get_arg("--results")
-        norm_counts_path <- get_arg("--normalized-counts")
-        sample_distances_path <- get_arg("--sample-distances")
-        sample_distance_order_path <- get_arg("--sample-distance-order")
-        sample_pca_path <- get_arg("--sample-pca")
-        count_matrix_heatmap_path <- get_arg("--count-matrix-heatmap")
+        size_factors_path <- get_arg("--size-factors")
+        vst_counts_path <- get_arg("--vst-counts")
         summary_path <- get_arg("--summary")
         results_names_path <- get_arg("--results-names")
         reference_levels_path <- get_arg("--reference-levels")
@@ -484,10 +763,11 @@ def _write_r_script(script_fp: Path) -> None:
             dds,
             test = "LRT",
             reduced = as.formula(paste("~", reduced_formula)),
-            fitType = fit_type
+            fitType = fit_type,
+            sfType = "poscounts"
           )
         } else {
-          dds <- DESeq(dds, fitType = fit_type)
+          dds <- DESeq(dds, fitType = fit_type, sfType = "poscounts")
         }
 
         results_names <- resultsNames(dds)
@@ -611,7 +891,7 @@ def _write_r_script(script_fp: Path) -> None:
                   design = design_formula
                 )
                 simple_dds <- simple_dds[rowSums(counts(simple_dds)) > 0, ]
-                simple_dds <- DESeq(simple_dds, fitType = fit_type)
+                simple_dds <- DESeq(simple_dds, fitType = fit_type, sfType = "poscounts")
                 simple_dds_cache[[cache_key]] <- simple_dds
               }
 
@@ -673,90 +953,30 @@ def _write_r_script(script_fp: Path) -> None:
           row.names = FALSE
         )
 
-        norm_counts <- as.data.frame(counts(dds, normalized = TRUE))
-        norm_counts$feature_id <- rownames(norm_counts)
-        norm_counts <- norm_counts[, c("feature_id", setdiff(colnames(norm_counts), "feature_id"))]
+        size_factors_df <- data.frame(
+          sample_id = colnames(dds),
+          size_factor = as.numeric(sizeFactors(dds)),
+          row.names = NULL,
+          check.names = FALSE
+        )
         write.table(
-          norm_counts,
-          file = norm_counts_path,
+          size_factors_df,
+          file = size_factors_path,
           sep = "\\t",
           quote = FALSE,
           row.names = FALSE
         )
 
         vsd <- vst(dds, blind = FALSE, nsub = min(1000, nrow(dds)))
-        sample_dists <- dist(t(assay(vsd)))
-        sample_dist_matrix <- as.matrix(sample_dists)
-        sample_dist_df <- as.data.frame(sample_dist_matrix)
-        sample_dist_df$sample_id <- rownames(sample_dist_df)
-        sample_dist_df <- sample_dist_df[
+        vst_counts <- as.data.frame(assay(vsd))
+        vst_counts$feature_id <- rownames(vst_counts)
+        vst_counts <- vst_counts[
           ,
-          c("sample_id", setdiff(colnames(sample_dist_df), "sample_id"))
+          c("feature_id", setdiff(colnames(vst_counts), "feature_id"))
         ]
         write.table(
-          sample_dist_df,
-          file = sample_distances_path,
-          sep = "\\t",
-          quote = FALSE,
-          row.names = FALSE
-        )
-
-        sample_hclust <- hclust(sample_dists)
-        writeLines(
-          sample_hclust$labels[sample_hclust$order],
-          con = sample_distance_order_path
-        )
-
-        ntop <- min(500, nrow(vsd))
-        rv <- matrixStats::rowVars(assay(vsd))
-        select <- order(rv, decreasing = TRUE)[seq_len(ntop)]
-        sample_pca <- prcomp(t(assay(vsd)[select, , drop = FALSE]))
-        total_variance <- sum(sample_pca$sdev^2)
-        if (total_variance > 0) {
-          percent_var <- (sample_pca$sdev^2) / total_variance
-        } else {
-          percent_var <- c(1, rep(0, max(1, length(sample_pca$sdev) - 1)))
-        }
-
-        sample_ids <- rownames(sample_pca$x)
-        pc1_values <- if (ncol(sample_pca$x) >= 1) sample_pca$x[, 1] else rep(0, length(sample_ids))
-        pc2_values <- if (ncol(sample_pca$x) >= 2) sample_pca$x[, 2] else rep(0, length(sample_ids))
-        percent_pc1 <- if (length(percent_var) >= 1) percent_var[[1]] * 100 else 0
-        percent_pc2 <- if (length(percent_var) >= 2) percent_var[[2]] * 100 else 0
-        sample_pca_df <- data.frame(
-          sample_id = sample_ids,
-          PC1 = pc1_values,
-          PC2 = pc2_values,
-          percent_variance_pc1 = rep(percent_pc1, length(sample_ids)),
-          percent_variance_pc2 = rep(percent_pc2, length(sample_ids)),
-          row.names = NULL,
-          check.names = FALSE
-        )
-        write.table(
-          sample_pca_df,
-          file = sample_pca_path,
-          sep = "\\t",
-          quote = FALSE,
-          row.names = FALSE
-        )
-
-        top_heatmap_n <- min(100, nrow(dds))
-        top_heatmap_select <- order(
-          rowMeans(counts(dds, normalized = TRUE)),
-          decreasing = TRUE
-        )[seq_len(top_heatmap_n)]
-        ordered_sample_ids <- sample_hclust$labels[sample_hclust$order]
-        count_matrix_heatmap_df <- as.data.frame(
-          assay(vsd)[top_heatmap_select, ordered_sample_ids, drop = FALSE]
-        )
-        count_matrix_heatmap_df$feature_id <- rownames(count_matrix_heatmap_df)
-        count_matrix_heatmap_df <- count_matrix_heatmap_df[
-          ,
-          c("feature_id", setdiff(colnames(count_matrix_heatmap_df), "feature_id"))
-        ]
-        write.table(
-          count_matrix_heatmap_df,
-          file = count_matrix_heatmap_path,
+          vst_counts,
+          file = vst_counts_path,
           sep = "\\t",
           quote = FALSE,
           row.names = FALSE
@@ -827,18 +1047,13 @@ def _run_deseq2_with_frames(
     if normalized_test == "lrt" and not normalized_reduced_formula:
         raise ValueError("reduced_formula is required when test='lrt'.")
 
-    counts_df = counts_df + 1
-
     with tempfile.TemporaryDirectory(prefix="q2-deseq2-") as temp_dir:
         temp_path = Path(temp_dir)
         counts_fp = temp_path / "counts.tsv"
         coldata_fp = temp_path / "coldata.tsv"
         results_fp = temp_path / "deseq2_results.tsv"
-        normalized_counts_fp = temp_path / "normalized_counts.tsv"
-        sample_distances_fp = temp_path / "sample_distances.tsv"
-        sample_distance_order_fp = temp_path / "sample_distance_order.txt"
-        sample_pca_fp = temp_path / "sample_pca.tsv"
-        count_matrix_heatmap_fp = temp_path / "count_matrix_heatmap.tsv"
+        size_factors_fp = temp_path / "size_factors.tsv"
+        vst_counts_fp = temp_path / "vst_counts.tsv"
         summary_fp = temp_path / "deseq2_summary.txt"
         results_names_fp = temp_path / "results_names.txt"
         reference_levels_fp = temp_path / "reference_levels.txt"
@@ -861,16 +1076,10 @@ def _run_deseq2_with_frames(
             str(coldata_fp),
             "--results",
             str(results_fp),
-            "--normalized-counts",
-            str(normalized_counts_fp),
-            "--sample-distances",
-            str(sample_distances_fp),
-            "--sample-distance-order",
-            str(sample_distance_order_fp),
-            "--sample-pca",
-            str(sample_pca_fp),
-            "--count-matrix-heatmap",
-            str(count_matrix_heatmap_fp),
+            "--size-factors",
+            str(size_factors_fp),
+            "--vst-counts",
+            str(vst_counts_fp),
             "--summary",
             str(summary_fp),
             "--ma-plot",
@@ -907,11 +1116,8 @@ def _run_deseq2_with_frames(
 
         expected_outputs = {
             "deseq2_results.tsv": results_fp,
-            "normalized_counts.tsv": normalized_counts_fp,
-            "sample_distances.tsv": sample_distances_fp,
-            "sample_distance_order.txt": sample_distance_order_fp,
-            "sample_pca.tsv": sample_pca_fp,
-            "count_matrix_heatmap.tsv": count_matrix_heatmap_fp,
+            "size_factors.tsv": size_factors_fp,
+            "vst_counts.tsv": vst_counts_fp,
             "results_names.txt": results_names_fp,
         }
         for expected_name, path in expected_outputs.items():
@@ -921,40 +1127,37 @@ def _run_deseq2_with_frames(
                 )
 
         results_df = pd.read_csv(results_fp, sep="\t")
-        normalized_counts_df = pd.read_csv(normalized_counts_fp, sep="\t")
-        sample_distance_matrix = pd.read_csv(
-            sample_distances_fp, sep="\t", index_col=0
-        )
-        sample_distance_matrix.index = sample_distance_matrix.index.map(str)
-        sample_distance_matrix.columns = sample_distance_matrix.columns.map(str)
-        sample_distance_matrix.index.name = None
-        sample_distance_matrix.columns.name = None
-        sample_distance_order = _unique_non_empty_values(
-            sample_distance_order_fp.read_text(encoding="utf-8").splitlines()
-        )
-        sample_pca_scores = pd.read_csv(sample_pca_fp, sep="\t", index_col=0)
-        sample_pca_scores.index = sample_pca_scores.index.map(str)
-        sample_pca_scores.columns = sample_pca_scores.columns.map(str)
-        sample_pca_scores.index.name = None
-        sample_pca_scores.columns.name = None
-        count_matrix_heatmap = pd.read_csv(
-            count_matrix_heatmap_fp, sep="\t", index_col=0
-        )
-        count_matrix_heatmap.index = count_matrix_heatmap.index.map(str)
-        count_matrix_heatmap.columns = count_matrix_heatmap.columns.map(str)
-        count_matrix_heatmap.index.name = None
-        count_matrix_heatmap.columns.name = None
-        sample_pca_percent_variance = ()
-        if {"percent_variance_pc1", "percent_variance_pc2"} <= set(
-            sample_pca_scores.columns
-        ):
-            sample_pca_percent_variance = (
-                float(sample_pca_scores.iloc[0]["percent_variance_pc1"]),
-                float(sample_pca_scores.iloc[0]["percent_variance_pc2"]),
+        size_factors_df = pd.read_csv(size_factors_fp, sep="\t")
+        required_size_factor_columns = {"sample_id", "size_factor"}
+        if not required_size_factor_columns <= set(size_factors_df.columns):
+            missing_columns = ", ".join(
+                sorted(required_size_factor_columns - set(size_factors_df.columns))
             )
-            sample_pca_scores = sample_pca_scores.drop(
-                columns=["percent_variance_pc1", "percent_variance_pc2"]
+            raise RuntimeError(
+                "DESeq2 completed but size_factors.tsv is missing required column(s): "
+                f"{missing_columns}."
             )
+        size_factors = pd.Series(
+            size_factors_df["size_factor"].astype(float).to_numpy(),
+            index=size_factors_df["sample_id"].astype(str),
+        )
+        vst_counts = pd.read_csv(vst_counts_fp, sep="\t", index_col=0)
+        vst_counts.index = vst_counts.index.map(str)
+        vst_counts.columns = vst_counts.columns.map(str)
+        vst_counts.index.name = None
+        vst_counts.columns.name = None
+        (
+            normalized_counts_df,
+            sample_distance_matrix,
+            sample_distance_order,
+            sample_pca_scores,
+            sample_pca_percent_variance,
+            count_matrix_heatmap,
+        ) = _compute_run_analytics(
+            counts_df=counts_df,
+            size_factors=size_factors,
+            vst_counts=vst_counts,
+        )
         available_results_names = _unique_non_empty_values(
             results_names_fp.read_text(encoding="utf-8").splitlines()
         )
@@ -970,7 +1173,8 @@ def _run_deseq2_with_frames(
             results=results_df,
             normalized_counts=normalized_counts_df,
             sample_metadata=sample_metadata_df,
-            test_level=legacy_test_level or _first_value_from_column(results_df, "test_level"),
+            test_level=legacy_test_level
+            or _first_value_from_column(results_df, "test_level"),
             reference_level=legacy_reference_level
             or _first_value_from_column(results_df, "reference_level"),
             default_effect_id=default_effect_id,

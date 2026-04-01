@@ -1,0 +1,13 @@
+feature-id	GUT_1	GUT_2	GUT_3	SKIN_1	SKIN_2	SKIN_3
+asv_gut_dominant	80	90	70	0	0	1
+asv_skin_dominant	0	1	0	60	75	65
+asv_shared_high	50	45	55	40	50	45
+asv_gut_enriched	30	25	35	5	3	4
+asv_skin_enriched	4	6	3	28	35	30
+asv_rare_gut	3	0	2	0	0	0
+asv_rare_skin	0	0	0	2	0	3
+asv_ubiquitous	100	110	95	105	98	108
+asv_sparse_shared	2	0	1	0	1	2
+asv_zero_heavy	0	0	1	1	0	0
+asv_low_count	1	0	0	0	1	0
+asv_variable	5	50	8	10	3	45

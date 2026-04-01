@@ -1,0 +1,10 @@
+##gff-version 3
+chr1	synthetic	gene	1	900	.	+	.	ID=gene_alpha;Name=alpA;product=Treatment A induced marker
+chr1	synthetic	gene	1001	1800	.	+	.	ID=gene_beta;Name=betA;product=Treatment A repressed marker
+chr1	synthetic	gene	2001	2900	.	-	.	ID=gene_gamma;Name=gamB;product=Treatment B induced marker
+chr1	synthetic	gene	3001	3800	.	-	.	ID=gene_delta;Name=delB;product=Treatment B repressed marker
+chr1	synthetic	gene	4001	4700	.	+	.	ID=gene_shared;Name=shr1;product=General treatment response
+chr1	synthetic	gene	5001	5900	.	+	.	ID=gene_housekeeping;Name=hkg1;product=Housekeeping enzyme
+chr1	synthetic	gene	6001	6800	.	-	.	ID=gene_balanced;Name=bal1;product=Constitutive transporter
+chr1	synthetic	gene	7001	7800	.	+	.	ID=gene_batch_shift;Name=bat1;product=Batch-sensitive ribosomal protein
+chr1	synthetic	gene	8001	8200	.	+	.	ID=gene_low_count;Name=low1;product=Low abundance transcript

@@ -11,6 +11,11 @@ from typing import NamedTuple
 
 import pandas as pd
 
+from q2_deseq2._frame_utils import (
+    _first_non_empty_string,
+    _first_value_from_column,
+    _unique_non_empty_values,
+)
 from q2_deseq2.types import DESeq2RunDirectoryFormat
 
 
@@ -32,33 +37,6 @@ class DESeq2RunResult(NamedTuple):
     sample_pca_scores: pd.DataFrame | None = None
     sample_pca_percent_variance: tuple[float, float] = ()
     count_matrix_heatmap: pd.DataFrame | None = None
-
-
-def _first_non_empty_string(value) -> str:
-    if value is None or pd.isna(value):
-        return ""
-    return str(value).strip()
-
-
-def _first_value_from_column(frame: pd.DataFrame, column_name: str) -> str:
-    if column_name not in frame.columns:
-        return ""
-    for value in frame[column_name]:
-        normalized = _first_non_empty_string(value)
-        if normalized:
-            return normalized
-    return ""
-
-
-def _unique_non_empty_values(values) -> tuple[str, ...]:
-    ordered_values = []
-    seen = set()
-    for value in values:
-        normalized = _first_non_empty_string(value)
-        if normalized and normalized not in seen:
-            ordered_values.append(normalized)
-            seen.add(normalized)
-    return tuple(ordered_values)
 
 
 def _resolve_default_effect_id(run_result: DESeq2RunResult) -> str:
@@ -267,5 +245,4 @@ def _parse_run_results(
         sample_pca_percent_variance=sample_pca_percent_variance,
         count_matrix_heatmap=count_matrix_heatmap,
     )
-
     return run_result, alpha

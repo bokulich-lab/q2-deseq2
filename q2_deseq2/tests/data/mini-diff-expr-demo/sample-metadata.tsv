@@ -1,0 +1,8 @@
+sample-id	condition	batch
+#q2:types	categorical	categorical
+CTRL_1	control	batch_1
+CTRL_2	control	batch_2
+TRTA_1	treated_a	batch_1
+TRTA_2	treated_a	batch_2
+TRTB_1	treated_b	batch_1
+TRTB_2	treated_b	batch_2

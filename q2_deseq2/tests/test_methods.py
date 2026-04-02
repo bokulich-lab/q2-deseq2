@@ -346,9 +346,11 @@ class TestMethods(TestPluginBase):
         self.assertIn("simple_dds_cache <- list()", script)
         self.assertIn("size_factors_path <- get_arg(\"--size-factors\")", script)
         self.assertIn("vst_counts_path <- get_arg(\"--vst-counts\")", script)
+        self.assertIn("size_factor_type <- get_arg(\"--size-factor-type\")", script)
         self.assertIn("vsd <- vst(dds, blind = FALSE", script)
         self.assertIn("size_factors_df <- data.frame(", script)
         self.assertIn("vst_counts <- as.data.frame(assay(vsd))", script)
+        self.assertIn("sfType = size_factor_type", script)
         self.assertNotIn("--normalized-counts", script)
         self.assertNotIn("--sample-distances", script)
         self.assertNotIn("--sample-distance-order", script)
@@ -392,6 +394,7 @@ class TestMethods(TestPluginBase):
             captured["sample_metadata"] = pd.read_csv(coldata_fp, sep="\t", index_col=0)
             captured["sample_metadata"].index.name = None
             self.assertEqual(cmd[cmd.index("--fixed-effects-formula") + 1], "condition")
+            self.assertEqual(cmd[cmd.index("--size-factor-type") + 1], "iterate")
             self.assertEqual(
                 reference_levels_fp.read_text(encoding="utf-8"),
                 "condition::control\n",
@@ -429,6 +432,7 @@ class TestMethods(TestPluginBase):
             reference_level="control",
             min_total_count=3,
             fit_type="mean",
+            size_factor_type="iterate",
             alpha=0.01,
             cooks_cutoff=False,
             independent_filtering=False,
@@ -438,6 +442,8 @@ class TestMethods(TestPluginBase):
         command = run_mock.call_args.args[0]
         self.assertIn("--fit-type", command)
         self.assertIn("mean", command)
+        self.assertIn("--size-factor-type", command)
+        self.assertIn("iterate", command)
         self.assertIn("--alpha", command)
         self.assertIn("0.01", command)
         self.assertIn("--size-factors", command)
@@ -522,6 +528,7 @@ class TestMethods(TestPluginBase):
                 "genotype + treatment + genotype:treatment",
             )
             self.assertEqual(cmd[cmd.index("--test") + 1], "wald")
+            self.assertEqual(cmd[cmd.index("--size-factor-type") + 1], "poscounts")
             self.assertEqual(
                 reference_levels_fp.read_text(encoding="utf-8"),
                 "genotype::KO\ntreatment::dmso\n",

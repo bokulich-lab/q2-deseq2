@@ -26,6 +26,7 @@ _CONTRAST_SPEC_RE = re.compile(r"^contrast::([^:]+)::([^:]+)::([^:]+)$")
 _SIMPLE_SPEC_RE = re.compile(
     r"^simple::([^:]+)::([^:]+)::([^:]+)\|within::([^:]+)::([^:]+)$"
 )
+_VALID_SIZE_FACTOR_TYPES = frozenset({"iterate", "poscounts", "ratio"})
 
 
 def _prepare_count_table(table: biom.Table) -> pd.DataFrame:
@@ -99,6 +100,18 @@ def _normalize_reference_levels(reference_levels: list[str] | None) -> list[str]
             )
         normalized.append(f"{column}::{level}")
         seen_columns.add(column)
+    return normalized
+
+
+def _normalize_size_factor_type(size_factor_type: str) -> str:
+    normalized = str(size_factor_type).strip().lower()
+    if not normalized:
+        raise ValueError("size_factor_type is required.")
+    if normalized not in _VALID_SIZE_FACTOR_TYPES:
+        supported_values = ", ".join(
+            f'"{value}"' for value in sorted(_VALID_SIZE_FACTOR_TYPES)
+        )
+        raise ValueError(f"size_factor_type must be one of: {supported_values}.")
     return normalized
 
 
@@ -592,6 +605,7 @@ def _run_deseq2_with_frames(
     test: str = "wald",
     reduced_formula: str = "",
     fit_type: str = "parametric",
+    size_factor_type: str = "poscounts",
     alpha: float = 0.05,
     cooks_cutoff: bool = True,
     independent_filtering: bool = True,
@@ -599,6 +613,7 @@ def _run_deseq2_with_frames(
     legacy_reference_level: str = "",
 ) -> DESeq2RunResult:
     normalized_reference_levels = _normalize_reference_levels(reference_levels)
+    normalized_size_factor_type = _normalize_size_factor_type(size_factor_type)
     normalized_test = str(test).strip().lower() or "wald"
     if normalized_test not in {"wald", "lrt"}:
         raise ValueError("test must be either 'wald' or 'lrt'.")
@@ -655,6 +670,8 @@ def _run_deseq2_with_frames(
             str(effect_specs_fp),
             "--fit-type",
             fit_type,
+            "--size-factor-type",
+            normalized_size_factor_type,
             "--alpha",
             str(alpha),
             "--cooks-cutoff",
@@ -765,6 +782,7 @@ def run_deseq2_model(
     reduced_formula: str = "",
     min_total_count: int = 10,
     fit_type: str = "parametric",
+    size_factor_type: str = "poscounts",
     alpha: float = 0.05,
     cooks_cutoff: bool = True,
     independent_filtering: bool = True,
@@ -793,6 +811,7 @@ def run_deseq2_model(
         test=test,
         reduced_formula=normalized_reduced_formula,
         fit_type=fit_type,
+        size_factor_type=size_factor_type,
         alpha=alpha,
         cooks_cutoff=cooks_cutoff,
         independent_filtering=independent_filtering,
@@ -805,6 +824,7 @@ def run_deseq2(
     reference_level: str = "",
     min_total_count: int = 10,
     fit_type: str = "parametric",
+    size_factor_type: str = "poscounts",
     alpha: float = 0.05,
     cooks_cutoff: bool = True,
     independent_filtering: bool = True,
@@ -825,6 +845,7 @@ def run_deseq2(
         effect_specs=effect_specs,
         test="wald",
         fit_type=fit_type,
+        size_factor_type=size_factor_type,
         alpha=alpha,
         cooks_cutoff=cooks_cutoff,
         independent_filtering=independent_filtering,
@@ -843,6 +864,7 @@ def _estimate_model(
     reduced_formula: str = "",
     min_total_count: int = 10,
     fit_type: str = "parametric",
+    size_factor_type: str = "poscounts",
     alpha: float = 0.05,
     cooks_cutoff: bool = True,
     independent_filtering: bool = True,
@@ -857,6 +879,7 @@ def _estimate_model(
         reduced_formula=reduced_formula,
         min_total_count=min_total_count,
         fit_type=fit_type,
+        size_factor_type=size_factor_type,
         alpha=alpha,
         cooks_cutoff=cooks_cutoff,
         independent_filtering=independent_filtering,
@@ -871,6 +894,7 @@ def _estimate_differential_expression(
     reference_level: str = "",
     min_total_count: int = 10,
     fit_type: str = "parametric",
+    size_factor_type: str = "poscounts",
     alpha: float = 0.05,
     cooks_cutoff: bool = True,
     independent_filtering: bool = True,
@@ -881,6 +905,7 @@ def _estimate_differential_expression(
         reference_level=reference_level,
         min_total_count=min_total_count,
         fit_type=fit_type,
+        size_factor_type=size_factor_type,
         alpha=alpha,
         cooks_cutoff=cooks_cutoff,
         independent_filtering=independent_filtering,

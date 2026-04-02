@@ -156,6 +156,7 @@ results_names_path <- get_arg("--results-names")
 reference_levels_path <- get_arg("--reference-levels")
 effect_specs_path <- get_arg("--effect-specs")
 fit_type <- get_arg("--fit-type")
+size_factor_type <- get_arg("--size-factor-type")
 alpha <- as.numeric(get_arg("--alpha"))
 cooks_cutoff <- parse_bool(get_arg("--cooks-cutoff"))
 independent_filtering <- parse_bool(get_arg("--independent-filtering"))
@@ -213,10 +214,10 @@ if (test_kind == "lrt") {
     test = "LRT",
     reduced = as.formula(paste("~", reduced_formula)),
     fitType = fit_type,
-    sfType = "poscounts"
+    sfType = size_factor_type
   )
 } else {
-  dds <- DESeq(dds, fitType = fit_type, sfType = "poscounts")
+  dds <- DESeq(dds, fitType = fit_type, sfType = size_factor_type)
 }
 
 results_names <- resultsNames(dds)
@@ -343,7 +344,7 @@ if (test_kind == "lrt") {
           design = design_formula
         )
         simple_dds <- simple_dds[rowSums(counts(simple_dds)) > 0, ]
-        simple_dds <- DESeq(simple_dds, fitType = fit_type, sfType = "poscounts")
+        simple_dds <- DESeq(simple_dds, fitType = fit_type, sfType = size_factor_type)
         simple_dds_cache[[cache_key]] <- simple_dds
       }
 

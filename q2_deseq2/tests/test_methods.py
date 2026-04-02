@@ -335,13 +335,9 @@ class TestMethods(TestPluginBase):
         self.assertEqual(observed_sample_pca_percent_variance, (100.0, 0.0))
         assert_frame_equal(observed_count_matrix_heatmap, expected_count_matrix_heatmap)
 
-    def test_write_r_script_contains_expected_steps(self):
-        with TemporaryDirectory() as temp_dir:
-            script_fp = Path(temp_dir) / "run_deseq2.R"
-
-            methods._write_r_script(script_fp)
-
-            script = script_fp.read_text(encoding="utf-8")
+    def test_r_script_contains_expected_steps(self):
+        source_path = Path(methods.__file__).parent / "run_deseq2.R"
+        script = source_path.read_text(encoding="utf-8")
 
         self.assertIn("fixed_effects_formula <- get_arg(\"--fixed-effects-formula\")", script)
         self.assertIn("results_names <- resultsNames(dds)", script)
@@ -358,12 +354,12 @@ class TestMethods(TestPluginBase):
         self.assertNotIn("--sample-distance-order", script)
         self.assertNotIn("--sample-pca", script)
         self.assertNotIn("--count-matrix-heatmap", script)
-        self.assertNotIn("--ma-plot", script)
+        self.assertIn("--ma-plot", script)
         self.assertNotIn("--volcano-plot", script)
         self.assertNotIn("sample_hclust <- hclust(sample_dists)", script)
         self.assertNotIn("sample_pca_df <- data.frame(", script)
         self.assertNotIn("count_matrix_heatmap_df <- as.data.frame(", script)
-        self.assertNotIn("plotMA(", script)
+        self.assertIn("plotMA(", script)
         self.assertNotIn("--test-level", script)
         self.assertTrue(script.endswith("\n"))
 
@@ -449,6 +445,7 @@ class TestMethods(TestPluginBase):
         self.assertNotIn("--normalized-counts", command)
         self.assertNotIn("--sample-distances", command)
         self.assertNotIn("--sample-pca", command)
+        self.assertIn("--ma-plot", command)
         self.assertNotIn("--volcano-plot", command)
         self.assertIn("false", command)
         assert_frame_equal(observed.results, expected_results)
@@ -607,6 +604,7 @@ class TestMethods(TestPluginBase):
         )
         self.assertIn("--size-factors", run_mock.call_args.args[0])
         self.assertIn("--vst-counts", run_mock.call_args.args[0])
+        self.assertIn("--ma-plot", run_mock.call_args.args[0])
         self.assertNotIn("--volcano-plot", run_mock.call_args.args[0])
 
     @patch("q2_deseq2.methods.run")

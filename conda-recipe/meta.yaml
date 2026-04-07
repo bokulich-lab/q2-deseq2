@@ -1,0 +1,35 @@
+package:
+  name: q2-deseq2
+  version: {{ PLUGIN_VERSION }}
+source:
+  path: ..
+build:
+  script: make install
+requirements:
+  host:
+  - python {{ python }}
+  - setuptools
+  - versioningit
+  - wheel
+  run:
+  - bioconductor-deseq2
+  - qiime2 >={{ qiime2 }}
+  - q2-types >={{ q2_types }}
+  - q2templates >={{ q2templates }}
+  build:
+  - python {{ python }}
+  - setuptools
+  - versioningit
+test:
+  requires:
+  - parameterized
+  - pytest-xdist
+  imports:
+  - q2_deseq2
+  - qiime2.plugins.deseq2
+  commands:
+  - pytest --pyargs q2_deseq2 -n 4
+about:
+  home: https://github.com/bokulich-lab/q2-deseq2
+  license: BSD-3-Clause
+  license_family: BSD

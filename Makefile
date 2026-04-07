@@ -1,4 +1,4 @@
-.PHONY: all lint test install dev clean distclean
+.PHONY: all lint test test-cov test-docker install dev clean distclean
 
 PYTHON ?= python
 
@@ -10,6 +10,13 @@ lint:
 
 test: all
 	py.test
+
+test-cov: all
+	python -m pytest --cov=q2_deseq2 -n 4 && coverage xml -o coverage.xml
+
+test-docker: all
+	qiime info
+	qiime deseq2 --help
 
 install: all
 	$(PYTHON) -m pip install -v .

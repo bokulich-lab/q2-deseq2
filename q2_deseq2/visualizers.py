@@ -11,16 +11,12 @@ from shutil import copytree
 from urllib.parse import unquote
 
 import pandas as pd
+import q2templates
 from pandas.api.types import is_numeric_dtype
-from q2_deseq2._run_data import DESeq2RunResult, _parse_run_results
 from q2_types.genome_data import LociDirectoryFormat
 
 from q2_deseq2.types import DESeq2RunDirectoryFormat
-
-try:
-    import q2templates
-except ImportError:  # pragma: no cover - exercised in QIIME 2 environments
-    q2templates = None
+from q2_deseq2.utils.run_data import DESeq2RunResult, _parse_run_results
 
 _ASSETS_DIR = Path(__file__).resolve().parent / "assets" / "deseq2"
 

@@ -195,6 +195,39 @@ class TestMethods(TestPluginBase):
         self.assertEqual(observed_reference_levels, ["genotype::KO", "treatment::dmso"])
         self.assertEqual(observed_reduced, "")
 
+    def test_prepare_model_inputs_accepts_dataframe_metadata(self):
+        metadata_df = self.model_metadata.to_dataframe()
+
+        (
+            observed_counts,
+            observed_coldata,
+            observed_formula,
+            observed_reference_levels,
+            observed_reduced,
+        ) = methods._prepare_model_inputs(
+            self.table,
+            metadata_df,
+            fixed_effects_formula="genotype + treatment + genotype:treatment",
+            min_total_count=0,
+            reference_levels=["genotype::KO", "treatment::dmso"],
+        )
+
+        expected_counts = self.table.to_dataframe(dense=True).round().astype(int)
+        expected_coldata = metadata_df.loc[
+            expected_counts.columns, ["genotype", "treatment"]
+        ]
+        expected_coldata = expected_coldata.astype(str)
+        expected_counts.columns.name = observed_counts.columns.name
+        expected_coldata.index.name = observed_coldata.index.name
+
+        assert_frame_equal(observed_counts, expected_counts)
+        assert_frame_equal(observed_coldata, expected_coldata)
+        self.assertEqual(
+            observed_formula, "genotype + treatment + genotype:treatment"
+        )
+        self.assertEqual(observed_reference_levels, ["genotype::KO", "treatment::dmso"])
+        self.assertEqual(observed_reduced, "")
+
     def test_prepare_model_inputs_rejects_missing_formula_columns(self):
         with self.assertRaisesRegex(ValueError, "missing columns required by the model"):
             methods._prepare_model_inputs(
@@ -365,7 +398,7 @@ class TestMethods(TestPluginBase):
         self.assertNotIn("--test-level", script)
         self.assertTrue(script.endswith("\n"))
 
-    @patch("q2_deseq2.methods.run")
+    @patch("q2_deseq2._methodlib.runner.run")
     def test_run_deseq2_executes_command_and_reads_outputs(self, run_mock):
         expected_results = self.sample_run_result.results
         captured = {}
@@ -483,7 +516,57 @@ class TestMethods(TestPluginBase):
         )
         self.assertEqual(observed.available_results_names, ("Intercept", "condition_treated_vs_control"))
 
-    @patch("q2_deseq2.methods.run")
+    @patch("q2_deseq2.methods.run_deseq2_model")
+    def test_run_deseq2_translates_simple_inputs_to_model_runner(
+        self, run_deseq2_model_mock
+    ):
+        run_deseq2_model_mock.return_value = self.sample_run_result._replace(
+            test_level="",
+            reference_level="",
+        )
+
+        observed = methods.run_deseq2(
+            table=self.table,
+            condition=self.condition_three_levels,
+            reference_level="control",
+            min_total_count=3,
+            fit_type="mean",
+            size_factor_type="iterate",
+            alpha=0.01,
+            cooks_cutoff=False,
+            independent_filtering=False,
+        )
+
+        run_deseq2_model_mock.assert_called_once()
+        kwargs = run_deseq2_model_mock.call_args.kwargs
+        expected_metadata = pd.DataFrame(
+            {"condition": self.condition_three_levels.to_series().astype(str)}
+        )
+        expected_metadata = expected_metadata.loc[:, ["condition"]]
+        expected_metadata.index.name = kwargs["metadata"].index.name
+        assert_frame_equal(kwargs["metadata"], expected_metadata)
+        self.assertIs(kwargs["table"], self.table)
+        self.assertEqual(kwargs["fixed_effects_formula"], "condition")
+        self.assertEqual(kwargs["reference_levels"], ["condition::control"])
+        self.assertEqual(
+            kwargs["effect_specs"],
+            [
+                "contrast::condition::other::control",
+                "contrast::condition::treated::control",
+            ],
+        )
+        self.assertEqual(kwargs["test"], "wald")
+        self.assertEqual(kwargs["reduced_formula"], "")
+        self.assertEqual(kwargs["min_total_count"], 3)
+        self.assertEqual(kwargs["fit_type"], "mean")
+        self.assertEqual(kwargs["size_factor_type"], "iterate")
+        self.assertEqual(kwargs["alpha"], 0.01)
+        self.assertFalse(kwargs["cooks_cutoff"])
+        self.assertFalse(kwargs["independent_filtering"])
+        self.assertEqual(observed.test_level, "")
+        self.assertEqual(observed.reference_level, "control")
+
+    @patch("q2_deseq2._methodlib.runner.run")
     def test_run_deseq2_model_executes_command_and_reads_outputs(self, run_mock):
         expected_results = pd.DataFrame(
             [
@@ -614,7 +697,7 @@ class TestMethods(TestPluginBase):
         self.assertIn("--ma-plot", run_mock.call_args.args[0])
         self.assertNotIn("--volcano-plot", run_mock.call_args.args[0])
 
-    @patch("q2_deseq2.methods.run")
+    @patch("q2_deseq2._methodlib.runner.run")
     def test_run_deseq2_raises_runtime_error_on_failure(self, run_mock):
         run_mock.side_effect = CalledProcessError(
             returncode=1,
@@ -627,4 +710,173 @@ class TestMethods(TestPluginBase):
                 table=self.table,
                 condition=self.condition,
                 reference_level="control",
+            )
+
+    def test_prepare_model_inputs_drops_samples_with_nan_metadata(self):
+        metadata_df = self.model_metadata.to_dataframe()
+        metadata_df.loc["Sample3", "treatment"] = None
+
+        observed_counts, observed_coldata, _, _, _ = methods._prepare_model_inputs(
+            self.table,
+            metadata_df,
+            fixed_effects_formula="genotype + treatment",
+            min_total_count=0,
+        )
+
+        self.assertNotIn("Sample3", observed_coldata.index)
+        self.assertNotIn("Sample3", observed_counts.columns)
+        self.assertIn("Sample1", observed_coldata.index)
+        self.assertEqual(observed_coldata.shape[0], 5)
+
+    def test_prepare_model_inputs_rejects_numeric_reference_level_column(self):
+        metadata_df = pd.DataFrame(
+            {"genotype": ["KO", "KO", "nonKO", "nonKO", "KO", "nonKO"],
+             "depth": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]},
+            index=[f"Sample{i}" for i in range(1, 7)],
+        )
+
+        with self.assertRaisesRegex(ValueError, "numeric metadata column"):
+            methods._prepare_model_inputs(
+                self.table,
+                metadata_df,
+                fixed_effects_formula="genotype + depth",
+                min_total_count=0,
+                reference_levels=["depth::10.0"],
+            )
+
+    def test_prepare_model_inputs_rejects_reference_level_not_in_observed_data(self):
+        with self.assertRaisesRegex(
+            ValueError, 'level "missing".*not present in metadata column'
+        ):
+            methods._prepare_model_inputs(
+                self.table,
+                self.model_metadata,
+                fixed_effects_formula="genotype + treatment",
+                min_total_count=0,
+                reference_levels=["genotype::missing"],
+            )
+
+    def test_normalize_formula_rejects_special_characters(self):
+        with self.assertRaisesRegex(ValueError, "may only contain"):
+            methods._normalize_formula("condition; DROP TABLE", "formula")
+
+        with self.assertRaisesRegex(ValueError, "may only contain"):
+            methods._normalize_formula("condition & batch", "formula")
+
+    def test_normalize_size_factor_type_rejects_invalid_values(self):
+        with self.assertRaisesRegex(ValueError, "size_factor_type must be one of"):
+            methods._normalize_size_factor_type("median")
+
+        with self.assertRaisesRegex(ValueError, "size_factor_type is required"):
+            methods._normalize_size_factor_type("")
+
+    @patch("q2_deseq2.methods.run_deseq2_model")
+    def test_run_deseq2_two_levels_auto_infers_reference_and_sets_test_level(
+        self, run_deseq2_model_mock
+    ):
+        run_deseq2_model_mock.return_value = self.sample_run_result._replace(
+            test_level="",
+            reference_level="",
+        )
+
+        observed = methods.run_deseq2(
+            table=self.table,
+            condition=self.condition,
+        )
+
+        kwargs = run_deseq2_model_mock.call_args.kwargs
+        self.assertEqual(kwargs["reference_levels"], ["condition::control"])
+        self.assertEqual(
+            kwargs["effect_specs"],
+            ["contrast::condition::treated::control"],
+        )
+        self.assertEqual(observed.test_level, "treated")
+        self.assertEqual(observed.reference_level, "control")
+
+    @patch("q2_deseq2._methodlib.runner.run")
+    def test_run_deseq2_model_lrt_passes_correct_arguments(self, run_mock):
+        expected_results = pd.DataFrame(
+            [
+                {
+                    "effect_id": "lrt::genotype + treatment::vs::1",
+                    "effect_label": "LRT: genotype + treatment vs 1",
+                    "effect_kind": "lrt",
+                    "effect_expression": "full=~ genotype + treatment; reduced=~ 1",
+                    "feature_id": "GG_OTU_1",
+                    "baseMean": 25.0,
+                    "log2FoldChange": 3.1,
+                    "lfcSE": 0.9,
+                    "stat": 9.2,
+                    "pvalue": 0.01,
+                    "padj": 0.04,
+                }
+            ]
+        )
+        captured = {}
+
+        def _fake_run(cmd, check, capture_output, text):
+            captured["cmd"] = cmd
+            counts_fp = Path(cmd[cmd.index("--counts") + 1])
+            results_fp = Path(cmd[cmd.index("--results") + 1])
+            size_factors_fp = Path(cmd[cmd.index("--size-factors") + 1])
+            vst_counts_fp = Path(cmd[cmd.index("--vst-counts") + 1])
+            summary_fp = Path(cmd[cmd.index("--summary") + 1])
+            results_names_fp = Path(cmd[cmd.index("--results-names") + 1])
+
+            counts_df = pd.read_csv(counts_fp, sep="\t", index_col=0)
+            captured["size_factors"], captured["vst_counts"] = (
+                self._mock_auxiliary_outputs(counts_df)
+            )
+            expected_results.to_csv(results_fp, sep="\t", index=False)
+            captured["size_factors"].rename_axis("sample_id").reset_index(
+                name="size_factor"
+            ).to_csv(size_factors_fp, sep="\t", index=False)
+            captured["vst_counts"].to_csv(
+                vst_counts_fp, sep="\t", index_label="feature_id"
+            )
+            results_names_fp.write_text(
+                "Intercept\ngenotype_nonKO_vs_KO\ntreatment_compoundA_vs_dmso\n",
+                encoding="utf-8",
+            )
+            summary_fp.write_text("summary\n", encoding="utf-8")
+            return Mock(returncode=0)
+
+        run_mock.side_effect = _fake_run
+
+        observed = methods.run_deseq2_model(
+            table=self.table,
+            metadata=self.model_metadata,
+            fixed_effects_formula="genotype + treatment",
+            test="lrt",
+            reduced_formula="genotype",
+            min_total_count=0,
+        )
+
+        cmd = captured["cmd"]
+        self.assertEqual(cmd[cmd.index("--test") + 1], "lrt")
+        self.assertEqual(cmd[cmd.index("--reduced-formula") + 1], "genotype")
+        self.assertEqual(cmd[cmd.index("--fixed-effects-formula") + 1], "genotype + treatment")
+        assert_frame_equal(observed.results, expected_results)
+        self.assertEqual(observed.test, "lrt")
+        self.assertEqual(observed.reduced_formula, "genotype")
+
+    def test_run_deseq2_with_frames_rejects_lrt_without_reduced_formula(self):
+        counts_df = pd.DataFrame(
+            {"Sample1": [10, 20], "Sample2": [30, 40]},
+            index=["GG_OTU_1", "GG_OTU_2"],
+        )
+        coldata_df = pd.DataFrame(
+            {"condition": ["control", "treated"]},
+            index=["Sample1", "Sample2"],
+        )
+
+        with self.assertRaisesRegex(
+            ValueError, "reduced_formula is required when test='lrt'"
+        ):
+            methods._run_deseq2_with_frames(
+                counts_df=counts_df,
+                coldata_df=coldata_df,
+                fixed_effects_formula="condition",
+                test="lrt",
+                reduced_formula="",
             )

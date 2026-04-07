@@ -1,0 +1,8 @@
+sample-id	condition	subject
+#q2:types	categorical	categorical
+GUT_1	gut	sub_1
+GUT_2	gut	sub_2
+GUT_3	gut	sub_3
+SKIN_1	skin	sub_1
+SKIN_2	skin	sub_2
+SKIN_3	skin	sub_3

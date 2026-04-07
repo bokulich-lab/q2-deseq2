@@ -1,0 +1,10 @@
+feature-id	CTRL_1	CTRL_2	TRTA_1	TRTA_2	TRTB_1	TRTB_2
+gene_alpha	20	25	220	210	18	22
+gene_beta	180	170	20	18	175	165
+gene_gamma	15	18	17	20	210	230
+gene_delta	200	190	195	205	22	18
+gene_shared	30	28	140	135	150	145
+gene_housekeeping	90	95	92	89	94	96
+gene_balanced	60	58	70	72	68	66
+gene_batch_shift	40	55	42	57	41	56
+gene_low_count	2	1	0	1	1	0

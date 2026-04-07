@@ -11,8 +11,9 @@ from pathlib import Path
 from subprocess import CalledProcessError, run
 
 import pandas as pd
-
 from q2_deseq2._frame_utils import _first_value_from_column, _unique_non_empty_values
+from q2_deseq2._run_data import DESeq2RunResult
+
 from q2_deseq2.utils.analytics import _compute_run_analytics
 from q2_deseq2.utils.prep import (
     _normalize_formula,
@@ -20,7 +21,6 @@ from q2_deseq2.utils.prep import (
     _normalize_size_factor_type,
     _validate_effect_specs,
 )
-from q2_deseq2._run_data import DESeq2RunResult
 
 
 def _write_lines(path: Path, lines: list[str]) -> None:

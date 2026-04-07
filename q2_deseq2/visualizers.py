@@ -12,9 +12,9 @@ from urllib.parse import unquote
 
 import pandas as pd
 from pandas.api.types import is_numeric_dtype
+from q2_deseq2._run_data import DESeq2RunResult, _parse_run_results
 from q2_types.genome_data import LociDirectoryFormat
 
-from q2_deseq2._run_data import DESeq2RunResult, _parse_run_results
 from q2_deseq2.types import DESeq2RunDirectoryFormat
 
 try:
@@ -202,9 +202,7 @@ def _ensure_comparison_columns(
     return enriched
 
 
-def _legacy_effect_id(
-    comparison: str, test_level: str, reference_level: str
-) -> str:
+def _legacy_effect_id(comparison: str, test_level: str, reference_level: str) -> str:
     if test_level and reference_level:
         return f"legacy::{test_level}::{reference_level}"
     if comparison:
@@ -329,7 +327,9 @@ def _prepare_table_payload(result_table: pd.DataFrame) -> str:
 def _resolve_sample_distance_order(
     sample_distance_matrix: pd.DataFrame, sample_distance_order: tuple[str, ...]
 ) -> list[str]:
-    available_ids = [str(sample_id) for sample_id in sample_distance_matrix.index.tolist()]
+    available_ids = [
+        str(sample_id) for sample_id in sample_distance_matrix.index.tolist()
+    ]
     ordered_ids = []
     seen = set()
     for sample_id in sample_distance_order:
@@ -439,7 +439,9 @@ def _ordered_sample_metadata_columns(
     return ordered_columns
 
 
-def _format_metadata_column_label(column: str, reference_levels: tuple[str, ...]) -> str:
+def _format_metadata_column_label(
+    column: str, reference_levels: tuple[str, ...]
+) -> str:
     reference_level = _reference_level_map(reference_levels).get(column)
     if reference_level:
         return f"{column} (ref: {reference_level})"
@@ -789,7 +791,10 @@ def _write_visualization_output(
             sep="\t",
             index_label="sample_id",
         )
-        if run_result.sample_metadata is not None and not run_result.sample_metadata.empty:
+        if (
+            run_result.sample_metadata is not None
+            and not run_result.sample_metadata.empty
+        ):
             sample_metadata = run_result.sample_metadata.copy()
             sample_metadata.index = sample_metadata.index.map(str)
             sample_metadata.columns = sample_metadata.columns.map(str)
@@ -798,7 +803,10 @@ def _write_visualization_output(
                 sep="\t",
                 index_label="sample_id",
             )
-    if run_result.count_matrix_heatmap is not None and not run_result.count_matrix_heatmap.empty:
+    if (
+        run_result.count_matrix_heatmap is not None
+        and not run_result.count_matrix_heatmap.empty
+    ):
         count_matrix_heatmap = run_result.count_matrix_heatmap.copy()
         count_matrix_heatmap.index = count_matrix_heatmap.index.map(str)
         count_matrix_heatmap.columns = count_matrix_heatmap.columns.map(str)

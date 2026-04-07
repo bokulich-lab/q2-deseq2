@@ -6,6 +6,9 @@
 # The full license is in the file LICENSE, distributed with this software.
 # ----------------------------------------------------------------------------
 
+from q2_types.feature_data import FeatureData
+from q2_types.feature_table import FeatureTable, Frequency
+from q2_types.genome_data import GenomeData, Loci
 from qiime2.plugin import (
     Bool,
     Categorical,
@@ -20,24 +23,21 @@ from qiime2.plugin import (
     Str,
     Visualization,
 )
-from q2_types.feature_data import FeatureData
-from q2_types.feature_table import FeatureTable, Frequency
-from q2_types.genome_data import GenomeData, Loci
 from rachis.core.type import Range
 
 from q2_deseq2 import __version__
-from q2_deseq2.types import (
-    DESeq2RunDirectoryFormat,
-    DESeq2RunMetadataFormat,
-    DESeq2StatsDirectoryFormat,
-    DESeq2StatsFormat,
-)
 from q2_deseq2.methods import (
     _estimate_differential_expression,
     _estimate_model,
 )
 from q2_deseq2.pipelines import estimate, estimate_model
 from q2_deseq2.types import DESeq2Run, DESeq2Stats
+from q2_deseq2.types import (
+    DESeq2RunDirectoryFormat,
+    DESeq2RunMetadataFormat,
+    DESeq2StatsDirectoryFormat,
+    DESeq2StatsFormat,
+)
 from q2_deseq2.visualizers import _visualize
 
 citations = Citations.load("citations.bib", package="q2_deseq2")

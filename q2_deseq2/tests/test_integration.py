@@ -14,7 +14,9 @@ def _r_deseq2_available():
     try:
         result = subprocess_run(
             ["Rscript", "-e", 'library("DESeq2"); cat("ok")'],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         return result.returncode == 0 and "ok" in result.stdout
     except Exception:
@@ -40,9 +42,7 @@ class TestRNASeqIntegration(_IntegrationBase):
         super().setUp()
         demo_dir = Path(self.get_data_path("mini-diff-expr-demo"))
         self.table = biom.load_table(str(demo_dir / "feature-table.biom"))
-        self.metadata = qiime2.Metadata.load(
-            str(demo_dir / "sample-metadata.tsv")
-        )
+        self.metadata = qiime2.Metadata.load(str(demo_dir / "sample-metadata.tsv"))
         self.condition = self.metadata.get_column("condition")
 
     def test_run_deseq2_simple_two_contrasts(self):
@@ -190,16 +190,12 @@ class TestRNASeqIntegration(_IntegrationBase):
         # gene_batch_shift should have a smaller effect after batch correction
         # compared to genes with real condition effects
         condition_effects = df[df["effect_id"].str.contains("condition")]
-        alpha_rows = condition_effects[
-            condition_effects["feature_id"] == "gene_alpha"
-        ]
+        alpha_rows = condition_effects[condition_effects["feature_id"] == "gene_alpha"]
         if not alpha_rows.empty:
             # gene_alpha should still be significant in its contrast
             ta_rows = alpha_rows[alpha_rows["effect_id"].str.contains("treated_a")]
             if not ta_rows.empty:
-                self.assertGreater(
-                    abs(ta_rows.iloc[0]["log2FoldChange"]), 2.0
-                )
+                self.assertGreater(abs(ta_rows.iloc[0]["log2FoldChange"]), 2.0)
 
 
 @unittest.skipUnless(_r_deseq2_available(), "R or DESeq2 not available")
@@ -209,9 +205,7 @@ class TestMicrobiomeIntegration(_IntegrationBase):
         super().setUp()
         demo_dir = Path(self.get_data_path("mini-diff-abund-demo"))
         self.table = biom.load_table(str(demo_dir / "feature-table.biom"))
-        self.metadata = qiime2.Metadata.load(
-            str(demo_dir / "sample-metadata.tsv")
-        )
+        self.metadata = qiime2.Metadata.load(str(demo_dir / "sample-metadata.tsv"))
         self.condition = self.metadata.get_column("condition")
 
     def _run_skin_vs_gut(self):

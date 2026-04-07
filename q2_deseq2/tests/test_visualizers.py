@@ -5,9 +5,9 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pandas as pd
+from q2_deseq2._run_data import DESeq2RunResult
 from qiime2.plugin.testing import TestPluginBase
 
-from q2_deseq2._run_data import DESeq2RunResult
 from q2_deseq2 import visualizers
 
 
@@ -375,7 +375,9 @@ class TestVisualizers(TestPluginBase):
         self.assertEqual(payload["cells"][0]["feature_id"], "GG_OTU_2")
         self.assertEqual(payload["cells"][0]["sample_id"], "Sample2")
         self.assertEqual(payload["cells"][0]["value"], 7.5)
-        self.assertEqual(payload["cells"][0]["sample_metadata"], "condition=treated; batch=B")
+        self.assertEqual(
+            payload["cells"][0]["sample_metadata"], "condition=treated; batch=B"
+        )
 
     def test_write_visualization_output_renders_tabbed_report(self):
         captured = {}
@@ -408,7 +410,9 @@ class TestVisualizers(TestPluginBase):
             self.assertTrue((output_path / "data" / "results_table.json").exists())
             self.assertTrue((output_path / "data" / "sample_distances.json").exists())
             self.assertTrue((output_path / "data" / "sample_pca.json").exists())
-            self.assertTrue((output_path / "data" / "count_matrix_heatmap.json").exists())
+            self.assertTrue(
+                (output_path / "data" / "count_matrix_heatmap.json").exists()
+            )
             self.assertTrue((output_path / "css" / "styles.css").exists())
             self.assertTrue((output_path / "js" / "linked_plots.js").exists())
             self.assertTrue((output_path / "js" / "sample_distances.js").exists())
@@ -418,7 +422,9 @@ class TestVisualizers(TestPluginBase):
                 (output_path / "vega" / "sample_distance_heatmap.json").exists()
             )
             self.assertTrue((output_path / "vega" / "sample_pca.json").exists())
-            self.assertTrue((output_path / "vega" / "count_matrix_heatmap.json").exists())
+            self.assertTrue(
+                (output_path / "vega" / "count_matrix_heatmap.json").exists()
+            )
 
             report_payload = json.loads(
                 (output_path / "data" / "results_table.json").read_text(
@@ -431,9 +437,7 @@ class TestVisualizers(TestPluginBase):
                 )
             )
             sample_pca_payload = json.loads(
-                (output_path / "data" / "sample_pca.json").read_text(
-                    encoding="utf-8"
-                )
+                (output_path / "data" / "sample_pca.json").read_text(encoding="utf-8")
             )
             count_matrix_heatmap_payload = json.loads(
                 (output_path / "data" / "count_matrix_heatmap.json").read_text(
@@ -461,9 +465,7 @@ class TestVisualizers(TestPluginBase):
         self.assertEqual(captured["context"]["summary"]["total_features"], 3)
         self.assertEqual(captured["context"]["summary"]["significant_features"], 1)
         self.assertEqual(captured["context"]["summary"]["annotated_features"], 3)
-        self.assertEqual(
-            len(json.loads(captured["context"]["effect_options_json"])), 2
-        )
+        self.assertEqual(len(json.loads(captured["context"]["effect_options_json"])), 2)
         self.assertTrue(captured["context"]["include_sample_metadata_file"])
         self.assertTrue(captured["context"]["has_sample_pca_plot"])
         self.assertTrue(captured["context"]["has_count_matrix_heatmap"])
@@ -532,7 +534,9 @@ class TestVisualizers(TestPluginBase):
             self.assertFalse((output_path / "count_matrix_heatmap.tsv").exists())
             self.assertFalse((output_path / "data" / "sample_distances.json").exists())
             self.assertFalse((output_path / "data" / "sample_pca.json").exists())
-            self.assertFalse((output_path / "data" / "count_matrix_heatmap.json").exists())
+            self.assertFalse(
+                (output_path / "data" / "count_matrix_heatmap.json").exists()
+            )
 
         self.assertEqual(
             [Path(template).name for template in captured["templates"]],

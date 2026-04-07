@@ -75,9 +75,7 @@ def _extract_formula_columns(formula: str, parameter_name: str) -> list[str]:
 def _parse_reference_level_spec(reference_level_spec: str) -> tuple[str, str]:
     column, separator, level = str(reference_level_spec).strip().partition("::")
     if separator != "::" or not column or not level:
-        raise ValueError(
-            "reference_levels entries must use the form 'column::level'."
-        )
+        raise ValueError("reference_levels entries must use the form 'column::level'.")
     return column, level
 
 
@@ -147,7 +145,9 @@ def _coerce_metadata_frame(metadata) -> pd.DataFrame:
     elif hasattr(metadata, "to_dataframe"):
         metadata_df = metadata.to_dataframe()
     else:
-        raise TypeError("metadata must be a qiime2.Metadata object or pandas DataFrame.")
+        raise TypeError(
+            "metadata must be a qiime2.Metadata object or pandas DataFrame."
+        )
 
     metadata_df.index = metadata_df.index.map(str)
     metadata_df.columns = metadata_df.columns.map(str)

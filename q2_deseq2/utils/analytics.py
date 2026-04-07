@@ -35,8 +35,8 @@ def _compute_sample_distance_matrix(vst_counts: pd.DataFrame) -> pd.DataFrame:
     sample_ids = vst_counts.columns.map(str)
     sample_matrix = vst_counts.to_numpy(dtype=float).T
     squared_norms = np.sum(sample_matrix * sample_matrix, axis=1, keepdims=True)
-    squared_distances = squared_norms + squared_norms.T - 2 * (
-        sample_matrix @ sample_matrix.T
+    squared_distances = (
+        squared_norms + squared_norms.T - 2 * (sample_matrix @ sample_matrix.T)
     )
     squared_distances = np.maximum(squared_distances, 0.0)
     distances = np.sqrt(squared_distances)
@@ -53,8 +53,7 @@ def _compute_sample_distance_order(
 
     distances = sample_distance_matrix.to_numpy(dtype=float)
     clusters = {
-        index: {"order": (index,), "height": 0.0}
-        for index in range(sample_count)
+        index: {"order": (index,), "height": 0.0} for index in range(sample_count)
     }
     cluster_distances = {
         (left, right): float(distances[left, right])
@@ -107,9 +106,7 @@ def _compute_sample_distance_order(
         }
 
         remaining_clusters = [
-            cluster_id
-            for cluster_id in active_clusters
-            if cluster_id not in best_pair
+            cluster_id for cluster_id in active_clusters if cluster_id not in best_pair
         ]
         for other_cluster in remaining_clusters:
             left_distance = cluster_distances[
@@ -211,7 +208,9 @@ def _compute_count_matrix_heatmap(
     sample_distance_order: tuple[str, ...],
 ) -> pd.DataFrame:
     ordered_sample_ids = [
-        sample_id for sample_id in sample_distance_order if sample_id in vst_counts.columns
+        sample_id
+        for sample_id in sample_distance_order
+        if sample_id in vst_counts.columns
     ]
     if not ordered_sample_ids:
         ordered_sample_ids = list(vst_counts.columns.map(str))
@@ -245,7 +244,9 @@ def _compute_run_analytics(
 ]:
     expected_sample_ids = list(counts_df.columns.map(str))
     missing_vst_samples = [
-        sample_id for sample_id in expected_sample_ids if sample_id not in vst_counts.columns
+        sample_id
+        for sample_id in expected_sample_ids
+        if sample_id not in vst_counts.columns
     ]
     if missing_vst_samples:
         missing_display = ", ".join(missing_vst_samples)
@@ -256,7 +257,9 @@ def _compute_run_analytics(
 
     expected_feature_ids = list(counts_df.index.map(str))
     missing_vst_features = [
-        feature_id for feature_id in expected_feature_ids if feature_id not in vst_counts.index
+        feature_id
+        for feature_id in expected_feature_ids
+        if feature_id not in vst_counts.index
     ]
     if missing_vst_features:
         missing_display = ", ".join(missing_vst_features[:10])

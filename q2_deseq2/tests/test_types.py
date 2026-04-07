@@ -85,7 +85,7 @@ class TestFormats(TestPluginBase):
         format = DESeq2RunMetadataFormat(filepath, mode="r")
 
         with self.assertRaisesRegex(
-            ValidationError, 'must include either legacy comparison fields'
+            ValidationError, "must include either legacy comparison fields"
         ):
             format.validate()
 
@@ -100,18 +100,14 @@ class TestFormats(TestPluginBase):
         filepath = self.get_data_path("deseq2-run-metadata-alpha-out-of-range.json")
         format = DESeq2RunMetadataFormat(filepath, mode="r")
 
-        with self.assertRaisesRegex(
-            ValidationError, "alpha must be between 0 and 1"
-        ):
+        with self.assertRaisesRegex(ValidationError, "alpha must be between 0 and 1"):
             format.validate()
 
     def test_deseq2_run_metadata_format_rejects_unknown_test(self):
         filepath = self.get_data_path("deseq2-run-metadata-invalid-test.json")
         format = DESeq2RunMetadataFormat(filepath, mode="r")
 
-        with self.assertRaisesRegex(
-            ValidationError, r'test must be "wald" or "lrt"'
-        ):
+        with self.assertRaisesRegex(ValidationError, r'test must be "wald" or "lrt"'):
             format.validate()
 
     def test_deseq2_run_directory_format_validate(self):
@@ -143,9 +139,7 @@ class TestFormats(TestPluginBase):
                 "Sample2\nSample1\n", encoding="utf-8"
             )
             (workdir / "sample_pca.tsv").write_text(
-                "sample_id\tPC1\tPC2\n"
-                "Sample1\t-2.1\t0.4\n"
-                "Sample2\t2.1\t-0.4\n",
+                "sample_id\tPC1\tPC2\n" "Sample1\t-2.1\t0.4\n" "Sample2\t2.1\t-0.4\n",
                 encoding="utf-8",
             )
             (workdir / "count_matrix_heatmap.tsv").write_text(
@@ -192,9 +186,7 @@ class TestFormats(TestPluginBase):
         filepath = self.get_data_path("deseq2-run-invalid-metadata")
         format = DESeq2RunDirectoryFormat(filepath, mode="r")
 
-        with self.assertRaisesRegex(
-            ValidationError, r'test must be "wald" or "lrt"'
-        ):
+        with self.assertRaisesRegex(ValidationError, r'test must be "wald" or "lrt"'):
             format.validate()
 
 
@@ -213,9 +205,7 @@ class TestTypes(TestPluginBase):
         )
 
     def test_deseq2_run_to_format_registration(self):
-        self.assertSemanticTypeRegisteredToFormat(
-            DESeq2Run, DESeq2RunDirectoryFormat
-        )
+        self.assertSemanticTypeRegisteredToFormat(DESeq2Run, DESeq2RunDirectoryFormat)
 
 
 class TestTransformers(TestPluginBase):

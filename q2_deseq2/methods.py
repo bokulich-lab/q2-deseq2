@@ -8,12 +8,14 @@
 
 import biom
 import pandas as pd
-
 from q2_deseq2._frame_utils import (
     _first_non_empty_string,
     _first_value_from_column,
     _unique_non_empty_values,
 )
+from q2_deseq2._run_data import DESeq2RunResult, write_run_result_artifact
+
+from q2_deseq2.types import DESeq2RunDirectoryFormat
 from q2_deseq2.utils.analytics import (
     _compute_count_matrix_heatmap,
     _compute_normalized_counts,
@@ -38,8 +40,6 @@ from q2_deseq2.utils.prep import (
     _validate_effect_specs,
 )
 from q2_deseq2.utils.runner import _run_deseq2_with_frames, _write_lines
-from q2_deseq2._run_data import DESeq2RunResult, write_run_result_artifact
-from q2_deseq2.types import DESeq2RunDirectoryFormat
 
 __all__ = [
     "_coerce_metadata_column",

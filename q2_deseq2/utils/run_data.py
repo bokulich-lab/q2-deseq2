@@ -10,12 +10,12 @@ from pathlib import Path
 from typing import NamedTuple
 
 import pandas as pd
-
 from q2_deseq2._frame_utils import (
     _first_non_empty_string,
     _first_value_from_column,
     _unique_non_empty_values,
 )
+
 from q2_deseq2.types import DESeq2RunDirectoryFormat
 
 
@@ -79,7 +79,10 @@ def _write_run_result(path: Path, run_result: DESeq2RunResult, alpha: float) -> 
             "\n".join(run_result.sample_distance_order) + "\n",
             encoding="utf-8",
         )
-    if run_result.sample_pca_scores is not None and not run_result.sample_pca_scores.empty:
+    if (
+        run_result.sample_pca_scores is not None
+        and not run_result.sample_pca_scores.empty
+    ):
         sample_pca_scores = run_result.sample_pca_scores.copy()
         sample_pca_scores.index = sample_pca_scores.index.map(str)
         sample_pca_scores.columns = sample_pca_scores.columns.map(str)
@@ -88,7 +91,10 @@ def _write_run_result(path: Path, run_result: DESeq2RunResult, alpha: float) -> 
             sep="\t",
             index_label="sample_id",
         )
-    if run_result.count_matrix_heatmap is not None and not run_result.count_matrix_heatmap.empty:
+    if (
+        run_result.count_matrix_heatmap is not None
+        and not run_result.count_matrix_heatmap.empty
+    ):
         count_matrix_heatmap = run_result.count_matrix_heatmap.copy()
         count_matrix_heatmap.index = count_matrix_heatmap.index.map(str)
         count_matrix_heatmap.columns = count_matrix_heatmap.columns.map(str)

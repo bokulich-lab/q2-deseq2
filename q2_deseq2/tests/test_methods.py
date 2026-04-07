@@ -1,15 +1,14 @@
 from pathlib import Path
 from subprocess import CalledProcessError
-from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
 import biom
 import pandas as pd
 import qiime2
 from pandas.testing import assert_frame_equal
+from q2_deseq2._run_data import DESeq2RunResult
 from qiime2.plugin.testing import TestPluginBase
 
-from q2_deseq2._run_data import DESeq2RunResult
 from q2_deseq2 import methods
 
 
@@ -189,9 +188,7 @@ class TestMethods(TestPluginBase):
 
         assert_frame_equal(observed_counts, expected_counts)
         assert_frame_equal(observed_coldata, expected_coldata)
-        self.assertEqual(
-            observed_formula, "genotype + treatment + genotype:treatment"
-        )
+        self.assertEqual(observed_formula, "genotype + treatment + genotype:treatment")
         self.assertEqual(observed_reference_levels, ["genotype::KO", "treatment::dmso"])
         self.assertEqual(observed_reduced, "")
 
@@ -222,14 +219,14 @@ class TestMethods(TestPluginBase):
 
         assert_frame_equal(observed_counts, expected_counts)
         assert_frame_equal(observed_coldata, expected_coldata)
-        self.assertEqual(
-            observed_formula, "genotype + treatment + genotype:treatment"
-        )
+        self.assertEqual(observed_formula, "genotype + treatment + genotype:treatment")
         self.assertEqual(observed_reference_levels, ["genotype::KO", "treatment::dmso"])
         self.assertEqual(observed_reduced, "")
 
     def test_prepare_model_inputs_rejects_missing_formula_columns(self):
-        with self.assertRaisesRegex(ValueError, "missing columns required by the model"):
+        with self.assertRaisesRegex(
+            ValueError, "missing columns required by the model"
+        ):
             methods._prepare_model_inputs(
                 self.table,
                 self.model_metadata,
@@ -358,8 +355,12 @@ class TestMethods(TestPluginBase):
         assert_frame_equal(observed_normalized_counts, expected_normalized_counts)
         assert_frame_equal(observed_sample_distances, expected_sample_distances)
         self.assertEqual(observed_sample_distance_order, ("Sample1", "Sample2"))
-        self.assertAlmostEqual(abs(observed_sample_pca_scores.loc["Sample1", "PC1"]), 2.5)
-        self.assertAlmostEqual(abs(observed_sample_pca_scores.loc["Sample2", "PC1"]), 2.5)
+        self.assertAlmostEqual(
+            abs(observed_sample_pca_scores.loc["Sample1", "PC1"]), 2.5
+        )
+        self.assertAlmostEqual(
+            abs(observed_sample_pca_scores.loc["Sample2", "PC1"]), 2.5
+        )
         self.assertAlmostEqual(
             observed_sample_pca_scores.loc["Sample1", "PC1"],
             -observed_sample_pca_scores.loc["Sample2", "PC1"],
@@ -372,14 +373,16 @@ class TestMethods(TestPluginBase):
         source_path = Path(methods.__file__).parent / "r" / "run_deseq2.R"
         script = source_path.read_text(encoding="utf-8")
 
-        self.assertIn("fixed_effects_formula <- get_arg(\"--fixed-effects-formula\")", script)
+        self.assertIn(
+            'fixed_effects_formula <- get_arg("--fixed-effects-formula")', script
+        )
         self.assertIn("results_names <- resultsNames(dds)", script)
         self.assertIn("effect_specs <- read_list_file(effect_specs_path)", script)
-        self.assertIn("test_kind == \"lrt\"", script)
+        self.assertIn('test_kind == "lrt"', script)
         self.assertIn("simple_dds_cache <- list()", script)
-        self.assertIn("size_factors_path <- get_arg(\"--size-factors\")", script)
-        self.assertIn("vst_counts_path <- get_arg(\"--vst-counts\")", script)
-        self.assertIn("size_factor_type <- get_arg(\"--size-factor-type\")", script)
+        self.assertIn('size_factors_path <- get_arg("--size-factors")', script)
+        self.assertIn('vst_counts_path <- get_arg("--vst-counts")', script)
+        self.assertIn('size_factor_type <- get_arg("--size-factor-type")', script)
         self.assertIn("vsd <- tryCatch(", script)
         self.assertIn("vst(dds, blind = FALSE", script)
         self.assertIn("varianceStabilizingTransformation(dds, blind = FALSE)", script)
@@ -435,10 +438,13 @@ class TestMethods(TestPluginBase):
                 reference_levels_fp.read_text(encoding="utf-8"),
                 "condition::control\n",
             )
-            self.assertIn("contrast::condition::other::control", effect_specs_fp.read_text(encoding="utf-8"))
+            self.assertIn(
+                "contrast::condition::other::control",
+                effect_specs_fp.read_text(encoding="utf-8"),
+            )
 
-            captured["size_factors"], captured["vst_counts"] = self._mock_auxiliary_outputs(
-                captured["counts"]
+            captured["size_factors"], captured["vst_counts"] = (
+                self._mock_auxiliary_outputs(captured["counts"])
             )
             expected_results.to_csv(results_fp, sep="\t", index=False)
             captured["size_factors"].rename_axis("sample_id").reset_index(
@@ -517,7 +523,10 @@ class TestMethods(TestPluginBase):
         self.assertEqual(
             observed.default_effect_id, "contrast::condition::other::control"
         )
-        self.assertEqual(observed.available_results_names, ("Intercept", "condition_treated_vs_control"))
+        self.assertEqual(
+            observed.available_results_names,
+            ("Intercept", "condition_treated_vs_control"),
+        )
 
     @patch("q2_deseq2.methods.run_deseq2_model")
     def test_run_deseq2_translates_simple_inputs_to_model_runner(
@@ -624,8 +633,8 @@ class TestMethods(TestPluginBase):
                 "simple::genotype::nonKO::KO|within::treatment::compoundA\n",
             )
 
-            captured["size_factors"], captured["vst_counts"] = self._mock_auxiliary_outputs(
-                captured["counts"]
+            captured["size_factors"], captured["vst_counts"] = (
+                self._mock_auxiliary_outputs(captured["counts"])
             )
             expected_results.to_csv(results_fp, sep="\t", index=False)
             captured["size_factors"].rename_axis("sample_id").reset_index(
@@ -654,9 +663,7 @@ class TestMethods(TestPluginBase):
             metadata=self.model_metadata,
             fixed_effects_formula="genotype + treatment + genotype:treatment",
             reference_levels=["genotype::KO", "treatment::dmso"],
-            effect_specs=[
-                "simple::genotype::nonKO::KO|within::treatment::compoundA"
-            ],
+            effect_specs=["simple::genotype::nonKO::KO|within::treatment::compoundA"],
             min_total_count=0,
         )
 
@@ -688,9 +695,7 @@ class TestMethods(TestPluginBase):
             observed.default_effect_id,
             "simple::genotype::nonKO::KO|within::treatment::compoundA",
         )
-        self.assertEqual(
-            observed.reference_levels, ("genotype::KO", "treatment::dmso")
-        )
+        self.assertEqual(observed.reference_levels, ("genotype::KO", "treatment::dmso"))
         self.assertEqual(
             observed.available_results_names,
             ("Intercept", "genotype_nonKO_vs_KO", "treatment_compoundA_vs_dmso"),
@@ -733,8 +738,10 @@ class TestMethods(TestPluginBase):
 
     def test_prepare_model_inputs_rejects_numeric_reference_level_column(self):
         metadata_df = pd.DataFrame(
-            {"genotype": ["KO", "KO", "nonKO", "nonKO", "KO", "nonKO"],
-             "depth": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]},
+            {
+                "genotype": ["KO", "KO", "nonKO", "nonKO", "KO", "nonKO"],
+                "depth": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0],
+            },
             index=[f"Sample{i}" for i in range(1, 7)],
         )
 
@@ -858,7 +865,9 @@ class TestMethods(TestPluginBase):
         cmd = captured["cmd"]
         self.assertEqual(cmd[cmd.index("--test") + 1], "lrt")
         self.assertEqual(cmd[cmd.index("--reduced-formula") + 1], "genotype")
-        self.assertEqual(cmd[cmd.index("--fixed-effects-formula") + 1], "genotype + treatment")
+        self.assertEqual(
+            cmd[cmd.index("--fixed-effects-formula") + 1], "genotype + treatment"
+        )
         assert_frame_equal(observed.results, expected_results)
         self.assertEqual(observed.test, "lrt")
         self.assertEqual(observed.reduced_formula, "genotype")

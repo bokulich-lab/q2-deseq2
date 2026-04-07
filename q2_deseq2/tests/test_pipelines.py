@@ -95,9 +95,7 @@ class TestPipelines(TestPluginBase):
             metadata="metadata-object",
             fixed_effects_formula="genotype + treatment + genotype:treatment",
             reference_levels=["genotype::KO", "treatment::dmso"],
-            effect_specs=[
-                "simple::genotype::nonKO::KO|within::treatment::compoundA"
-            ],
+            effect_specs=["simple::genotype::nonKO::KO|within::treatment::compoundA"],
             test="wald",
             reduced_formula="",
             min_total_count=11,
@@ -119,9 +117,7 @@ class TestPipelines(TestPluginBase):
             metadata="metadata-object",
             fixed_effects_formula="genotype + treatment + genotype:treatment",
             reference_levels=["genotype::KO", "treatment::dmso"],
-            effect_specs=[
-                "simple::genotype::nonKO::KO|within::treatment::compoundA"
-            ],
+            effect_specs=["simple::genotype::nonKO::KO|within::treatment::compoundA"],
             test="wald",
             reduced_formula="",
             min_total_count=11,

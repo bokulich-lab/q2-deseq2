@@ -8,8 +8,8 @@
 
 import pandas as pd
 
-from . import DESeq2StatsFormat
 from q2_deseq2.plugin_setup import plugin
+from . import DESeq2StatsFormat
 
 
 @plugin.register_transformer

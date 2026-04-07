@@ -369,7 +369,7 @@ class TestMethods(TestPluginBase):
         assert_frame_equal(observed_count_matrix_heatmap, expected_count_matrix_heatmap)
 
     def test_r_script_contains_expected_steps(self):
-        source_path = Path(methods.__file__).parent / "run_deseq2.R"
+        source_path = Path(methods.__file__).parent / "r" / "run_deseq2.R"
         script = source_path.read_text(encoding="utf-8")
 
         self.assertIn("fixed_effects_formula <- get_arg(\"--fixed-effects-formula\")", script)
@@ -380,10 +380,13 @@ class TestMethods(TestPluginBase):
         self.assertIn("size_factors_path <- get_arg(\"--size-factors\")", script)
         self.assertIn("vst_counts_path <- get_arg(\"--vst-counts\")", script)
         self.assertIn("size_factor_type <- get_arg(\"--size-factor-type\")", script)
-        self.assertIn("vsd <- vst(dds, blind = FALSE", script)
+        self.assertIn("vsd <- tryCatch(", script)
+        self.assertIn("vst(dds, blind = FALSE", script)
+        self.assertIn("varianceStabilizingTransformation(dds, blind = FALSE)", script)
         self.assertIn("size_factors_df <- data.frame(", script)
         self.assertIn("vst_counts <- as.data.frame(assay(vsd))", script)
         self.assertIn("sfType = size_factor_type", script)
+        self.assertIn("deseq_with_fit_fallback(", script)
         self.assertNotIn("--normalized-counts", script)
         self.assertNotIn("--sample-distances", script)
         self.assertNotIn("--sample-distance-order", script)

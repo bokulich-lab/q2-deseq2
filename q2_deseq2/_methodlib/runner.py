@@ -71,7 +71,7 @@ def _run_deseq2_with_frames(
         results_names_fp = temp_path / "results_names.txt"
         reference_levels_fp = temp_path / "reference_levels.txt"
         effect_specs_fp = temp_path / "effect_specs.txt"
-        script_fp = Path(__file__).resolve().parent.parent / "run_deseq2.R"
+        script_fp = Path(__file__).resolve().parent.parent / "r" / "run_deseq2.R"
         ma_plot_fp = temp_path / "ma_plot.png"
 
         counts_df.to_csv(counts_fp, sep="\t", index_label="feature_id")

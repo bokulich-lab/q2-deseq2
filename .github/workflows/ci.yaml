@@ -12,5 +12,40 @@ jobs:
   ci:
     uses: bokulich-lab/utilities/.github/workflows/ci.yaml@main
     with:
-      distro: moshpit
+      distro: tiny
       build_docker: true
+
+  test-r:
+    name: R unit tests (R ${{ matrix.r-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        r-version: ["4.4.2", "4.5.2"]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.r-version }}
+
+      - name: Cache R packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.R_LIBS_USER }}
+          key: r-${{ matrix.r-version }}-${{ runner.os }}-deseq2
+          restore-keys: r-${{ matrix.r-version }}-${{ runner.os }}-
+
+      - name: Install R dependencies
+        shell: Rscript {0}
+        run: |
+          install.packages("BiocManager", repos = "https://cloud.r-project.org", quiet = TRUE)
+          install.packages("testthat",    repos = "https://cloud.r-project.org", quiet = TRUE)
+          BiocManager::install("DESeq2", ask = FALSE, quiet = TRUE)
+
+      - name: Run R unit tests
+        shell: Rscript {0}
+        run: |
+          testthat::test_file(
+            "q2_deseq2/r/tests/test_run_deseq2.R",
+            stop_on_failure = TRUE
+          )

@@ -1,5 +1,5 @@
 # ----------------------------------------------------------------------------
-# Copyright (c) 2024, Michal Ziemski.
+# Copyright (c) 2026, QIIME 2 development team.
 #
 # Distributed under the terms of the Modified BSD License.
 #
@@ -13,8 +13,8 @@ from subprocess import CalledProcessError, run
 import pandas as pd
 
 from q2_deseq2._frame_utils import _first_value_from_column, _unique_non_empty_values
-from q2_deseq2._methodlib.analytics import _compute_run_analytics
-from q2_deseq2._methodlib.prep import (
+from q2_deseq2.utils.analytics import _compute_run_analytics
+from q2_deseq2.utils.prep import (
     _normalize_formula,
     _normalize_reference_levels,
     _normalize_size_factor_type,

@@ -1,5 +1,5 @@
 # ----------------------------------------------------------------------------
-# Copyright (c) 2024, Michal Ziemski.
+# Copyright (c) 2026, QIIME 2 development team.
 #
 # Distributed under the terms of the Modified BSD License.
 #
@@ -14,7 +14,7 @@ from q2_deseq2._frame_utils import (
     _first_value_from_column,
     _unique_non_empty_values,
 )
-from q2_deseq2._methodlib.analytics import (
+from q2_deseq2.utils.analytics import (
     _compute_count_matrix_heatmap,
     _compute_normalized_counts,
     _compute_run_analytics,
@@ -22,7 +22,7 @@ from q2_deseq2._methodlib.analytics import (
     _compute_sample_distance_order,
     _compute_sample_pca,
 )
-from q2_deseq2._methodlib.prep import (
+from q2_deseq2.utils.prep import (
     _coerce_metadata_column,
     _coerce_metadata_frame,
     _collect_matching_samples,
@@ -37,7 +37,7 @@ from q2_deseq2._methodlib.prep import (
     _prepare_model_inputs,
     _validate_effect_specs,
 )
-from q2_deseq2._methodlib.runner import _run_deseq2_with_frames, _write_lines
+from q2_deseq2.utils.runner import _run_deseq2_with_frames, _write_lines
 from q2_deseq2._run_data import DESeq2RunResult, write_run_result_artifact
 from q2_deseq2.types import DESeq2RunDirectoryFormat
 

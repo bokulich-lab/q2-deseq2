@@ -1,8 +1,16 @@
+# ----------------------------------------------------------------------------
+# Copyright (c) 2026, QIIME 2 development team.
+#
+# Distributed under the terms of the Modified BSD License.
+#
+# The full license is in the file LICENSE, distributed with this software.
+# ----------------------------------------------------------------------------
+
 # ============================================================================
 # run_deseq2.R — DESeq2 runner invoked by q2-deseq2 via Rscript
 #
 # This script is called as a subprocess by _run_deseq2_with_frames() in
-# _methodlib/runner.py. It reads count and metadata TSVs written by the Python side,
+# utils/runner.py. It reads count and metadata TSVs written by the Python side,
 # fits a DESeq2 model, extracts results for each requested effect, and writes
 # output files that the Python side reads back.
 # ============================================================================

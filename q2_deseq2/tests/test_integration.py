@@ -10,19 +10,6 @@ from qiime2.plugin.testing import TestPluginBase
 from q2_deseq2 import methods
 
 
-def _r_deseq2_available():
-    try:
-        result = subprocess_run(
-            ["Rscript", "-e", 'library("DESeq2"); cat("ok")'],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        return result.returncode == 0 and "ok" in result.stdout
-    except Exception:
-        return False
-
-
 class _IntegrationBase(TestPluginBase):
     package = "q2_deseq2.tests"
 
@@ -35,7 +22,6 @@ class _IntegrationBase(TestPluginBase):
         return rows.iloc[0]
 
 
-@unittest.skipUnless(_r_deseq2_available(), "R or DESeq2 not available")
 class TestRNASeqIntegration(_IntegrationBase):
 
     def setUp(self):
@@ -198,7 +184,6 @@ class TestRNASeqIntegration(_IntegrationBase):
                 self.assertGreater(abs(ta_rows.iloc[0]["log2FoldChange"]), 2.0)
 
 
-@unittest.skipUnless(_r_deseq2_available(), "R or DESeq2 not available")
 class TestMicrobiomeIntegration(_IntegrationBase):
 
     def setUp(self):

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pandas as pd
-from q2_deseq2._run_data import DESeq2RunResult
+from q2_deseq2.utils.run_data import DESeq2RunResult
 from qiime2.plugin.testing import TestPluginBase
 
 from q2_deseq2 import visualizers

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 import pandas as pd
-from q2_deseq2._frame_utils import (
+from q2_deseq2.utils.frame_utils import (
     _first_non_empty_string,
     _first_value_from_column,
     _unique_non_empty_values,

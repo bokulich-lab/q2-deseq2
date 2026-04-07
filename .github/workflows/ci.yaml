@@ -46,6 +46,6 @@ jobs:
         shell: Rscript {0}
         run: |
           testthat::test_file(
-            "q2_deseq2/r/tests/test_run_deseq2.R",
+            "q2_deseq2/r/test_run_deseq2.R",
             stop_on_failure = TRUE
           )

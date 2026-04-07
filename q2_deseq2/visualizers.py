@@ -190,14 +190,14 @@ def _ensure_comparison_columns(
         enriched["comparison"].astype(str).str.strip() == ""
     )
     if comparison_missing.any():
-        enriched.loc[comparison_missing, "comparison"] = enriched.loc[
-            comparison_missing
-        ].apply(
+        generated = enriched.loc[comparison_missing].apply(
             lambda row: _format_comparison_label(
                 str(row["test_level"]), str(row["reference_level"])
             ),
             axis=1,
         )
+        enriched["comparison"] = enriched["comparison"].astype(object)
+        enriched.loc[comparison_missing, "comparison"] = generated.values
 
     return enriched
 

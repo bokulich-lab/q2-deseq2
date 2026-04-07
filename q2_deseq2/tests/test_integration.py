@@ -272,10 +272,12 @@ class TestMicrobiomeIntegration(_IntegrationBase):
         for col in ["baseMean", "log2FoldChange", "lfcSE", "stat", "pvalue", "padj"]:
             self.assertIn(col, df.columns)
 
-        # 12 features minus asv_low_count = 11 features in results
+        # 12 features minus asv_low_count (total=2) and asv_zero_heavy (total=2)
+        # both fall below min_total_count=5 and are filtered out
         feature_ids = sorted(df["feature_id"].unique())
-        self.assertEqual(len(feature_ids), 11)
+        self.assertEqual(len(feature_ids), 10)
         self.assertNotIn("asv_low_count", feature_ids)
+        self.assertNotIn("asv_zero_heavy", feature_ids)
 
         # All baseMean values should be positive
         self.assertTrue((df["baseMean"] > 0).all())
@@ -292,10 +294,10 @@ class TestMicrobiomeIntegration(_IntegrationBase):
             "Adjusted p-values should be >= raw p-values",
         )
 
-        # Normalized counts: 11 features x 6 samples + feature_id column
+        # Normalized counts: 10 features x 6 samples + feature_id column
         nc = result.normalized_counts
         self.assertIn("feature_id", nc.columns)
-        self.assertEqual(nc.shape[0], 11)
+        self.assertEqual(nc.shape[0], 10)
         for sample in ["GUT_1", "GUT_2", "GUT_3", "SKIN_1", "SKIN_2", "SKIN_3"]:
             self.assertIn(sample, nc.columns)
         numeric_cols = [c for c in nc.columns if c != "feature_id"]

@@ -660,9 +660,7 @@ class TestMethods(TestPluginBase):
                 "genotype": ["KO", "KO", "nonKO", "nonKO", "KO", "nonKO"],
                 "depth": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0],
             },
-            index=pd.Index(
-                [f"Sample{i}" for i in range(1, 7)], name="sample-id"
-            ),
+            index=pd.Index([f"Sample{i}" for i in range(1, 7)], name="sample-id"),
         )
 
         with self.assertRaisesRegex(ValueError, "numeric metadata column"):
@@ -707,17 +705,26 @@ class TestMethods(TestPluginBase):
             counts_df = pd.read_csv(counts_fp, sep="\t", index_col=0)
             size_factors, vst_counts = self._mock_auxiliary_outputs(counts_df)
             pd.DataFrame(
-                [{"effect_id": "contrast::condition::treated::control",
-                  "feature_id": "GG_OTU_1", "baseMean": 10.0,
-                  "log2FoldChange": 1.0, "lfcSE": 0.5, "stat": 2.0,
-                  "pvalue": 0.05, "padj": 0.1}]
+                [
+                    {
+                        "effect_id": "contrast::condition::treated::control",
+                        "feature_id": "GG_OTU_1",
+                        "baseMean": 10.0,
+                        "log2FoldChange": 1.0,
+                        "lfcSE": 0.5,
+                        "stat": 2.0,
+                        "pvalue": 0.05,
+                        "padj": 0.1,
+                    }
+                ]
             ).to_csv(results_fp, sep="\t", index=False)
             size_factors.rename_axis("sample_id").reset_index(
                 name="size_factor"
             ).to_csv(size_factors_fp, sep="\t", index=False)
             vst_counts.to_csv(vst_counts_fp, sep="\t", index_label="feature_id")
-            results_names_fp.write_text("Intercept\ncondition_treated_vs_control\n",
-                                        encoding="utf-8")
+            results_names_fp.write_text(
+                "Intercept\ncondition_treated_vs_control\n", encoding="utf-8"
+            )
             summary_fp.write_text("summary\n", encoding="utf-8")
             return Mock(returncode=0)
 
@@ -729,8 +736,10 @@ class TestMethods(TestPluginBase):
         )
 
         cmd = run_mock.call_args.args[0]
-        self.assertEqual(cmd[cmd.index("--reference-levels") + 1].split("/")[-1],
-                         "reference_levels.txt")
+        self.assertEqual(
+            cmd[cmd.index("--reference-levels") + 1].split("/")[-1],
+            "reference_levels.txt",
+        )
         self.assertEqual(observed.test_level, "treated")
         self.assertEqual(observed.reference_level, "control")
 

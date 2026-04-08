@@ -11,6 +11,7 @@ import re
 import biom
 import pandas as pd
 from pandas.api.types import is_numeric_dtype
+from rachis import Metadata
 
 _FORMULA_ALLOWED_CHARS = re.compile(r"^[A-Za-z0-9_:+*() \t]+$")
 _FORMULA_TOKEN_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\b")
@@ -201,7 +202,7 @@ def _coerce_metadata_column(column: pd.Series) -> pd.Series:
     return column.astype(str)
 
 
-def _coerce_metadata_frame(metadata) -> pd.DataFrame:
+def _coerce_metadata_frame(metadata: Metadata) -> pd.DataFrame:
     """Convert a QIIME 2 metadata object to a plain DataFrame with string index/columns.
 
     Calls ``.to_dataframe()`` then ensures both the index and column labels are
@@ -275,7 +276,7 @@ def _prepare_inputs(
 
 def _prepare_model_inputs(
     table: biom.Table,
-    metadata,
+    metadata: Metadata,
     fixed_effects_formula: str,
     min_total_count: int,
     reference_levels: list[str] | None = None,

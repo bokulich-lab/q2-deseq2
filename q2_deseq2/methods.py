@@ -16,11 +16,12 @@ from q2_deseq2.utils.prep import (
 )
 from q2_deseq2.utils.run_data import DESeq2RunResult, write_run_result_artifact
 from q2_deseq2.utils.runner import _run_deseq2_with_frames
+from rachis import Metadata
 
 
 def run_deseq2_model(
     table: biom.Table,
-    metadata,
+    metadata: Metadata,
     fixed_effects_formula: str,
     reference_levels: list[str] | None = None,
     effect_specs: list[str] | None = None,
@@ -75,7 +76,7 @@ def run_deseq2(
     cooks_cutoff: bool = True,
     independent_filtering: bool = True,
 ) -> DESeq2RunResult:
-    _, coldata_df, comparison_levels, reference_level = _prepare_inputs(
+    counts_df, coldata_df, comparison_levels, reference_level = _prepare_inputs(
         table, condition, min_total_count, reference_level
     )
     effect_specs = [
@@ -83,15 +84,14 @@ def run_deseq2(
         for comparison_level in comparison_levels
     ]
 
-    run_result = run_deseq2_model(
-        table=table,
-        metadata=coldata_df,
+    run_result = _run_deseq2_with_frames(
+        counts_df=counts_df,
+        coldata_df=coldata_df,
         fixed_effects_formula="condition",
         reference_levels=[f"condition::{reference_level}"],
         effect_specs=effect_specs,
         test="wald",
         reduced_formula="",
-        min_total_count=min_total_count,
         fit_type=fit_type,
         size_factor_type=size_factor_type,
         alpha=alpha,

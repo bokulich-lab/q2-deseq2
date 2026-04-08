@@ -39,17 +39,14 @@ def estimate(
     differential_expression_stats, differential_expression_run = table_action(
         **shared_kwargs
     )
-    visualization_kwargs = {"deseq2_results": differential_expression_run}
-    if gene_annotations is None:
-        (differential_expression_visualization,) = visualization_action(
-            **visualization_kwargs
-        )
-    else:
-        visualization_kwargs["gene_annotations"] = gene_annotations
-        visualization_kwargs["reference_id"] = reference_id
-        (differential_expression_visualization,) = visualization_action(
-            **visualization_kwargs
-        )
+    visualization_kwargs = {
+        "deseq2_results": differential_expression_run,
+        "gene_annotations": gene_annotations,
+        "reference_id": reference_id,
+    }
+    (differential_expression_visualization,) = visualization_action(
+        **visualization_kwargs
+    )
 
     return differential_expression_stats, differential_expression_visualization
 
@@ -94,16 +91,13 @@ def estimate_model(
     differential_expression_stats, differential_expression_run = table_action(
         **shared_kwargs
     )
-    visualization_kwargs = {"deseq2_results": differential_expression_run}
-    if gene_annotations is None:
-        (differential_expression_visualization,) = visualization_action(
-            **visualization_kwargs
-        )
-    else:
-        visualization_kwargs["gene_annotations"] = gene_annotations
-        visualization_kwargs["reference_id"] = reference_id
-        (differential_expression_visualization,) = visualization_action(
-            **visualization_kwargs
-        )
+    visualization_kwargs = {
+        "deseq2_results": differential_expression_run,
+        "gene_annotations": gene_annotations,
+        "reference_id": reference_id,
+    }
+    (differential_expression_visualization,) = visualization_action(
+        **visualization_kwargs
+    )
 
     return differential_expression_stats, differential_expression_visualization

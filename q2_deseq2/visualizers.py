@@ -18,7 +18,7 @@ from q2_types.genome_data import LociDirectoryFormat
 from q2_deseq2.types import DESeq2RunDirectoryFormat
 from q2_deseq2.utils.run_data import DESeq2RunResult, _parse_run_results
 
-_ASSETS_DIR = Path(__file__).resolve().parent / "assets" / "deseq2"
+_ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 
 
 def _value_or_none(value):

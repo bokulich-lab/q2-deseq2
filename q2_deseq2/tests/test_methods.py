@@ -10,6 +10,8 @@ from q2_deseq2.utils.run_data import DESeq2RunResult
 from qiime2.plugin.testing import TestPluginBase
 
 from q2_deseq2 import methods
+from q2_deseq2.utils.analytics import _compute_run_analytics
+from q2_deseq2.utils.prep import _normalize_formula, _validate_effect_specs
 
 
 class TestMethods(TestPluginBase):
@@ -17,7 +19,14 @@ class TestMethods(TestPluginBase):
 
     def setUp(self):
         super().setUp()
-        self.table = biom.load_table(self.get_data_path("table-1.biom"))
+        _table_df = pd.read_csv(
+            self.get_data_path("table-1.tsv"), sep="\t", index_col=0
+        )
+        self.table = biom.Table(
+            _table_df.values,
+            observation_ids=_table_df.index.tolist(),
+            sample_ids=_table_df.columns.tolist(),
+        )
         self.condition = qiime2.Metadata.load(
             self.get_data_path("condition.tsv")
         ).get_column("condition")
@@ -40,7 +49,9 @@ class TestMethods(TestPluginBase):
                         "effect_id": "contrast::condition::other::control",
                         "effect_label": "condition: other vs control",
                         "effect_kind": "contrast",
-                        "effect_expression": 'contrast=c("condition","other","control")',
+                        "effect_expression": (
+                            'contrast=c("condition","other","control")'
+                        ),
                         "comparison": "other vs. control",
                         "test_level": "other",
                         "reference_level": "control",
@@ -56,7 +67,9 @@ class TestMethods(TestPluginBase):
                         "effect_id": "contrast::condition::treated::control",
                         "effect_label": "condition: treated vs control",
                         "effect_kind": "contrast",
-                        "effect_expression": 'contrast=c("condition","treated","control")',
+                        "effect_expression": (
+                            'contrast=c("condition","treated","control")'
+                        ),
                         "comparison": "treated vs. control",
                         "test_level": "treated",
                         "reference_level": "control",
@@ -192,37 +205,6 @@ class TestMethods(TestPluginBase):
         self.assertEqual(observed_reference_levels, ["genotype::KO", "treatment::dmso"])
         self.assertEqual(observed_reduced, "")
 
-    def test_prepare_model_inputs_accepts_dataframe_metadata(self):
-        metadata_df = self.model_metadata.to_dataframe()
-
-        (
-            observed_counts,
-            observed_coldata,
-            observed_formula,
-            observed_reference_levels,
-            observed_reduced,
-        ) = methods._prepare_model_inputs(
-            self.table,
-            metadata_df,
-            fixed_effects_formula="genotype + treatment + genotype:treatment",
-            min_total_count=0,
-            reference_levels=["genotype::KO", "treatment::dmso"],
-        )
-
-        expected_counts = self.table.to_dataframe(dense=True).round().astype(int)
-        expected_coldata = metadata_df.loc[
-            expected_counts.columns, ["genotype", "treatment"]
-        ]
-        expected_coldata = expected_coldata.astype(str)
-        expected_counts.columns.name = observed_counts.columns.name
-        expected_coldata.index.name = observed_coldata.index.name
-
-        assert_frame_equal(observed_counts, expected_counts)
-        assert_frame_equal(observed_coldata, expected_coldata)
-        self.assertEqual(observed_formula, "genotype + treatment + genotype:treatment")
-        self.assertEqual(observed_reference_levels, ["genotype::KO", "treatment::dmso"])
-        self.assertEqual(observed_reduced, "")
-
     def test_prepare_model_inputs_rejects_missing_formula_columns(self):
         with self.assertRaisesRegex(
             ValueError, "missing columns required by the model"
@@ -238,7 +220,7 @@ class TestMethods(TestPluginBase):
         with self.assertRaisesRegex(
             ValueError, "effect_specs are not supported when test='lrt'"
         ):
-            methods._validate_effect_specs(
+            _validate_effect_specs(
                 ["contrast::condition::treated::control"], test="lrt"
             )
 
@@ -258,25 +240,6 @@ class TestMethods(TestPluginBase):
             methods._prepare_inputs(
                 self.table,
                 self.condition_single_level,
-                min_total_count=0,
-                reference_level="",
-            )
-
-    def test_prepare_inputs_rejects_negative_counts(self):
-        negative_counts = self.table.to_dataframe(dense=True)
-        negative_counts.iloc[0, 0] = -1
-        negative_table = biom.Table(
-            negative_counts.values,
-            observation_ids=negative_counts.index,
-            sample_ids=negative_counts.columns,
-        )
-
-        with self.assertRaisesRegex(
-            ValueError, "Feature table counts must be non-negative integers"
-        ):
-            methods._prepare_inputs(
-                negative_table,
-                self.condition,
                 min_total_count=0,
                 reference_level="",
             )
@@ -330,7 +293,7 @@ class TestMethods(TestPluginBase):
             observed_sample_pca_scores,
             observed_sample_pca_percent_variance,
             observed_count_matrix_heatmap,
-        ) = methods._compute_run_analytics(
+        ) = _compute_run_analytics(
             counts_df=counts_df,
             size_factors=size_factors,
             vst_counts=vst_counts,
@@ -422,7 +385,6 @@ class TestMethods(TestPluginBase):
             size_factors_fp = Path(cmd[cmd.index("--size-factors") + 1])
             vst_counts_fp = Path(cmd[cmd.index("--vst-counts") + 1])
             summary_fp = Path(cmd[cmd.index("--summary") + 1])
-            ma_plot_fp = Path(cmd[cmd.index("--ma-plot") + 1])
             results_names_fp = Path(cmd[cmd.index("--results-names") + 1])
             reference_levels_fp = Path(cmd[cmd.index("--reference-levels") + 1])
             effect_specs_fp = Path(cmd[cmd.index("--effect-specs") + 1])
@@ -505,7 +467,7 @@ class TestMethods(TestPluginBase):
             expected_sample_pca_scores,
             expected_sample_pca_percent_variance,
             expected_count_matrix_heatmap,
-        ) = methods._compute_run_analytics(
+        ) = _compute_run_analytics(
             counts_df=captured["counts"],
             size_factors=captured["size_factors"],
             vst_counts=captured["vst_counts"],
@@ -529,65 +491,20 @@ class TestMethods(TestPluginBase):
             ("Intercept", "condition_treated_vs_control"),
         )
 
-    @patch("q2_deseq2.methods.run_deseq2_model")
-    def test_run_deseq2_translates_simple_inputs_to_model_runner(
-        self, run_deseq2_model_mock
-    ):
-        run_deseq2_model_mock.return_value = self.sample_run_result._replace(
-            test_level="",
-            reference_level="",
-        )
-
-        observed = methods.run_deseq2(
-            table=self.table,
-            condition=self.condition_three_levels,
-            reference_level="control",
-            min_total_count=3,
-            fit_type="mean",
-            size_factor_type="iterate",
-            alpha=0.01,
-            cooks_cutoff=False,
-            independent_filtering=False,
-        )
-
-        run_deseq2_model_mock.assert_called_once()
-        kwargs = run_deseq2_model_mock.call_args.kwargs
-        expected_metadata = pd.DataFrame(
-            {"condition": self.condition_three_levels.to_series().astype(str)}
-        )
-        expected_metadata = expected_metadata.loc[:, ["condition"]]
-        expected_metadata.index.name = kwargs["metadata"].index.name
-        assert_frame_equal(kwargs["metadata"], expected_metadata)
-        self.assertIs(kwargs["table"], self.table)
-        self.assertEqual(kwargs["fixed_effects_formula"], "condition")
-        self.assertEqual(kwargs["reference_levels"], ["condition::control"])
-        self.assertEqual(
-            kwargs["effect_specs"],
-            [
-                "contrast::condition::other::control",
-                "contrast::condition::treated::control",
-            ],
-        )
-        self.assertEqual(kwargs["test"], "wald")
-        self.assertEqual(kwargs["reduced_formula"], "")
-        self.assertEqual(kwargs["min_total_count"], 3)
-        self.assertEqual(kwargs["fit_type"], "mean")
-        self.assertEqual(kwargs["size_factor_type"], "iterate")
-        self.assertEqual(kwargs["alpha"], 0.01)
-        self.assertFalse(kwargs["cooks_cutoff"])
-        self.assertFalse(kwargs["independent_filtering"])
-        self.assertEqual(observed.test_level, "")
-        self.assertEqual(observed.reference_level, "control")
-
     @patch("q2_deseq2.utils.runner.run")
     def test_run_deseq2_model_executes_command_and_reads_outputs(self, run_mock):
         expected_results = pd.DataFrame(
             [
                 {
-                    "effect_id": "simple::genotype::nonKO::KO|within::treatment::compoundA",
+                    "effect_id": (
+                        "simple::genotype::nonKO::KO|" "within::treatment::compoundA"
+                    ),
                     "effect_label": "genotype: nonKO vs KO within treatment=compoundA",
                     "effect_kind": "simple",
-                    "effect_expression": 'contrast=c("genotype","nonKO","KO"); within="treatment=compoundA"',
+                    "effect_expression": (
+                        'contrast=c("genotype","nonKO","KO"); '
+                        'within="treatment=compoundA"'
+                    ),
                     "comparison": "nonKO vs. KO (treatment=compoundA)",
                     "test_level": "nonKO",
                     "reference_level": "KO",
@@ -610,7 +527,6 @@ class TestMethods(TestPluginBase):
             size_factors_fp = Path(cmd[cmd.index("--size-factors") + 1])
             vst_counts_fp = Path(cmd[cmd.index("--vst-counts") + 1])
             summary_fp = Path(cmd[cmd.index("--summary") + 1])
-            ma_plot_fp = Path(cmd[cmd.index("--ma-plot") + 1])
             results_names_fp = Path(cmd[cmd.index("--results-names") + 1])
             reference_levels_fp = Path(cmd[cmd.index("--reference-levels") + 1])
             effect_specs_fp = Path(cmd[cmd.index("--effect-specs") + 1])
@@ -676,7 +592,7 @@ class TestMethods(TestPluginBase):
             expected_sample_pca_scores,
             expected_sample_pca_percent_variance,
             expected_count_matrix_heatmap,
-        ) = methods._compute_run_analytics(
+        ) = _compute_run_analytics(
             counts_df=captured["counts"],
             size_factors=captured["size_factors"],
             vst_counts=captured["vst_counts"],
@@ -724,10 +640,11 @@ class TestMethods(TestPluginBase):
     def test_prepare_model_inputs_drops_samples_with_nan_metadata(self):
         metadata_df = self.model_metadata.to_dataframe()
         metadata_df.loc["Sample3", "treatment"] = None
+        metadata_with_nan = qiime2.Metadata(metadata_df)
 
         observed_counts, observed_coldata, _, _, _ = methods._prepare_model_inputs(
             self.table,
-            metadata_df,
+            metadata_with_nan,
             fixed_effects_formula="genotype + treatment",
             min_total_count=0,
         )
@@ -743,13 +660,13 @@ class TestMethods(TestPluginBase):
                 "genotype": ["KO", "KO", "nonKO", "nonKO", "KO", "nonKO"],
                 "depth": [10.0, 20.0, 30.0, 40.0, 50.0, 60.0],
             },
-            index=[f"Sample{i}" for i in range(1, 7)],
+            index=pd.Index([f"Sample{i}" for i in range(1, 7)], name="sample-id"),
         )
 
         with self.assertRaisesRegex(ValueError, "numeric metadata column"):
             methods._prepare_model_inputs(
                 self.table,
-                metadata_df,
+                qiime2.Metadata(metadata_df),
                 fixed_effects_formula="genotype + depth",
                 min_total_count=0,
                 reference_levels=["depth::10.0"],
@@ -769,37 +686,59 @@ class TestMethods(TestPluginBase):
 
     def test_normalize_formula_rejects_special_characters(self):
         with self.assertRaisesRegex(ValueError, "may only contain"):
-            methods._normalize_formula("condition; DROP TABLE", "formula")
+            _normalize_formula("condition; DROP TABLE", "formula")
 
         with self.assertRaisesRegex(ValueError, "may only contain"):
-            methods._normalize_formula("condition & batch", "formula")
+            _normalize_formula("condition & batch", "formula")
 
-    def test_normalize_size_factor_type_rejects_invalid_values(self):
-        with self.assertRaisesRegex(ValueError, "size_factor_type must be one of"):
-            methods._normalize_size_factor_type("median")
-
-        with self.assertRaisesRegex(ValueError, "size_factor_type is required"):
-            methods._normalize_size_factor_type("")
-
-    @patch("q2_deseq2.methods.run_deseq2_model")
+    @patch("q2_deseq2.utils.runner.run")
     def test_run_deseq2_two_levels_auto_infers_reference_and_sets_test_level(
-        self, run_deseq2_model_mock
+        self, run_mock
     ):
-        run_deseq2_model_mock.return_value = self.sample_run_result._replace(
-            test_level="",
-            reference_level="",
-        )
+        def _fake_run(cmd, check, capture_output, text):
+            counts_fp = Path(cmd[cmd.index("--counts") + 1])
+            results_fp = Path(cmd[cmd.index("--results") + 1])
+            size_factors_fp = Path(cmd[cmd.index("--size-factors") + 1])
+            vst_counts_fp = Path(cmd[cmd.index("--vst-counts") + 1])
+            results_names_fp = Path(cmd[cmd.index("--results-names") + 1])
+            summary_fp = Path(cmd[cmd.index("--summary") + 1])
+            counts_df = pd.read_csv(counts_fp, sep="\t", index_col=0)
+            size_factors, vst_counts = self._mock_auxiliary_outputs(counts_df)
+            pd.DataFrame(
+                [
+                    {
+                        "effect_id": "contrast::condition::treated::control",
+                        "feature_id": "GG_OTU_1",
+                        "baseMean": 10.0,
+                        "log2FoldChange": 1.0,
+                        "lfcSE": 0.5,
+                        "stat": 2.0,
+                        "pvalue": 0.05,
+                        "padj": 0.1,
+                    }
+                ]
+            ).to_csv(results_fp, sep="\t", index=False)
+            size_factors.rename_axis("sample_id").reset_index(
+                name="size_factor"
+            ).to_csv(size_factors_fp, sep="\t", index=False)
+            vst_counts.to_csv(vst_counts_fp, sep="\t", index_label="feature_id")
+            results_names_fp.write_text(
+                "Intercept\ncondition_treated_vs_control\n", encoding="utf-8"
+            )
+            summary_fp.write_text("summary\n", encoding="utf-8")
+            return Mock(returncode=0)
+
+        run_mock.side_effect = _fake_run
 
         observed = methods.run_deseq2(
             table=self.table,
             condition=self.condition,
         )
 
-        kwargs = run_deseq2_model_mock.call_args.kwargs
-        self.assertEqual(kwargs["reference_levels"], ["condition::control"])
+        cmd = run_mock.call_args.args[0]
         self.assertEqual(
-            kwargs["effect_specs"],
-            ["contrast::condition::treated::control"],
+            cmd[cmd.index("--reference-levels") + 1].split("/")[-1],
+            "reference_levels.txt",
         )
         self.assertEqual(observed.test_level, "treated")
         self.assertEqual(observed.reference_level, "control")

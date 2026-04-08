@@ -18,7 +18,7 @@ from q2_types.genome_data import LociDirectoryFormat
 from q2_deseq2.types import DESeq2RunDirectoryFormat
 from q2_deseq2.utils.run_data import DESeq2RunResult, _parse_run_results
 
-_ASSETS_DIR = Path(__file__).resolve().parent / "assets" / "deseq2"
+_ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 
 
 def _value_or_none(value):
@@ -635,9 +635,6 @@ def _render_report(
     sample_pca_percent_variance: tuple[float, float] = (),
     count_matrix_heatmap: pd.DataFrame | None = None,
 ) -> None:
-    if q2templates is None:
-        raise ImportError("q2templates is required to render the DESeq2 visualization.")
-
     _copy_report_assets(output_dir)
     data_dir = output_dir / "data"
     data_dir.mkdir(exist_ok=True)

@@ -31,7 +31,7 @@ class TestPipelines(TestPluginBase):
 
         ctx.get_action.assert_has_calls(
             [
-                call("deseq2", "_estimate_differential_expression"),
+                call("deseq2", "_estimate"),
                 call("deseq2", "_visualize"),
             ]
         )
@@ -46,7 +46,9 @@ class TestPipelines(TestPluginBase):
             cooks_cutoff=False,
             independent_filtering=False,
         )
-        visualization_action.assert_called_once_with(deseq2_results="run-artifact")
+        visualization_action.assert_called_once_with(
+            deseq2_results="run-artifact", gene_annotations=None, reference_id=None
+        )
         self.assertEqual(observed_stats, "stats-artifact")
         self.assertEqual(observed_visualization, "viz-artifact")
 
@@ -127,7 +129,9 @@ class TestPipelines(TestPluginBase):
             cooks_cutoff=False,
             independent_filtering=False,
         )
-        visualization_action.assert_called_once_with(deseq2_results="run-artifact")
+        visualization_action.assert_called_once_with(
+            deseq2_results="run-artifact", gene_annotations=None, reference_id=None
+        )
         self.assertEqual(observed_stats, "stats-artifact")
         self.assertEqual(observed_visualization, "viz-artifact")
 

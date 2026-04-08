@@ -1,3 +1,7 @@
+.nav-tabs {
+  margin-top: 8px;
+}
+
 .report-title {
   margin-bottom: 14px;
   margin-top: 0;
@@ -124,7 +128,7 @@
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
-  padding: 10px 4px 8px 2px;
+  padding: 10px 10px 8px 10px;
 }
 
 .sample-distance-panels-single {
@@ -204,7 +208,8 @@
   gap: 4px;
   margin-left: auto;
   margin-bottom: 10px;
-  max-width: 220px;
+  min-width: 280px;
+  max-width: 280px;
 }
 
 .sample-distance-legend-title {
@@ -306,6 +311,7 @@
 
 .plot-column > .text-muted {
   margin-bottom: 16px;
+  padding-left: 5px;
 }
 
 #sample-distance-view,

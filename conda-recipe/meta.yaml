@@ -16,6 +16,8 @@ requirements:
   - qiime2 >={{ qiime2 }}
   - q2-types >={{ q2_types }}
   - q2templates >={{ q2templates }}
+  - scikit-learn
+  - scipy
   build:
   - python {{ python }}
   - setuptools

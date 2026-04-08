@@ -12,13 +12,35 @@ library(testthat)
 # Source the R script so all helper functions are available.  The main body is
 # guarded by sys.nframe() == 0L so it will NOT execute when sourced.
 script_path <- local({
+  # Q2_DESEQ2_R_DIR env var is the most reliable pointer (set by CI).
+  env_dir <- Sys.getenv("Q2_DESEQ2_R_DIR", unset = "")
+  if (nzchar(env_dir) && file.exists(file.path(env_dir, "run_deseq2.R"))) {
+    return(normalizePath(file.path(env_dir, "run_deseq2.R"), mustWork = TRUE))
+  }
+
   # When invoked directly via Rscript the file path is in --file= arg.
   file_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
   test_dir <- if (length(file_arg)) {
     dirname(normalizePath(sub("^--file=", "", file_arg[1])))
   } else {
-    # testthat::test_file() sets cwd to the directory containing the test file.
-    getwd()
+    # Scan the call stack for ofile set by base::source().
+    candidates <- character(0)
+    for (frame in sys.frames()) {
+      if (exists("ofile", envir = frame, inherits = FALSE)) {
+        ofile <- get("ofile", envir = frame, inherits = FALSE)
+        if (!is.null(ofile)) {
+          candidates <- c(candidates, file.path(dirname(normalizePath(ofile)), "run_deseq2.R"))
+        }
+        break
+      }
+    }
+    candidates <- c(
+      candidates,
+      file.path(getwd(), "run_deseq2.R"),
+      file.path(getwd(), "q2_deseq2", "r", "run_deseq2.R")
+    )
+    found <- Filter(file.exists, candidates)
+    if (length(found) > 0) dirname(normalizePath(found[1])) else getwd()
   }
   normalizePath(file.path(test_dir, "run_deseq2.R"), mustWork = TRUE)
 })

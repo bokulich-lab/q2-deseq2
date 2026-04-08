@@ -474,6 +474,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       let currentHeight = 0;
 
       const applySpecConfig = (renderSpec, plotSize) => {
+        renderSpec.autosize = "none";
         renderSpec.width = plotSize.width;
         renderSpec.height = plotSize.height;
         renderSpec.padding = heatmapPadding;
@@ -639,13 +640,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       let currentWidth = 0;
       let currentHeight = 0;
       const pcaPadding = {
-        left: 22,
+        left: 60,
         right: 12,
-        top: hasGrouping ? 24 : 12,
+        top: hasGrouping ? 60 : 12,
         bottom: 50,
       };
 
       const applySpecConfig = (renderSpec, plotSize) => {
+        renderSpec.autosize = "none";
         renderSpec.width = plotSize.width;
         renderSpec.height = plotSize.height;
         renderSpec.data[0].values = points;

@@ -17,8 +17,17 @@ script_path <- local({
   test_dir <- if (length(file_arg)) {
     dirname(normalizePath(sub("^--file=", "", file_arg[1])))
   } else {
-    # testthat::test_file() sets cwd to the directory containing the test file.
-    getwd()
+    # When sourced via testthat::test_file(), base::source() stores the path of
+    # the file being evaluated in 'ofile' on its call-stack frame.  Scan for it
+    # so we find the test file's directory regardless of the working directory.
+    ofile <- NULL
+    for (frame in sys.frames()) {
+      if (exists("ofile", envir = frame, inherits = FALSE)) {
+        ofile <- get("ofile", envir = frame, inherits = FALSE)
+        break
+      }
+    }
+    if (!is.null(ofile)) dirname(normalizePath(ofile)) else getwd()
   }
   normalizePath(file.path(test_dir, "run_deseq2.R"), mustWork = TRUE)
 })

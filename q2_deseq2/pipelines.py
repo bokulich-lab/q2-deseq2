@@ -21,7 +21,7 @@ def estimate(
     cooks_cutoff=True,
     independent_filtering=True,
 ):
-    table_action = ctx.get_action("deseq2", "_estimate_differential_expression")
+    table_action = ctx.get_action("deseq2", "_estimate")
     visualization_action = ctx.get_action("deseq2", "_visualize")
 
     shared_kwargs = {

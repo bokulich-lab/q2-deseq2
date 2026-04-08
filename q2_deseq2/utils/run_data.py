@@ -40,6 +40,15 @@ class DESeq2RunResult(NamedTuple):
 
 
 def _resolve_default_effect_id(run_result: DESeq2RunResult) -> str:
+    """Derive the default effect ID to embed in the run metadata JSON.
+
+    Resolution priority:
+
+    1. ``run_result.default_effect_id`` if already set.
+    2. First non-empty value in the ``effect_id`` column of the results table.
+    3. A ``"legacy::<comparison>"`` string built from the ``comparison`` column.
+    4. ``""`` when no identifier can be derived.
+    """
     if run_result.default_effect_id:
         return run_result.default_effect_id
     if "effect_id" in run_result.results.columns:
@@ -53,6 +62,19 @@ def _resolve_default_effect_id(run_result: DESeq2RunResult) -> str:
 
 
 def _write_run_result(path: Path, run_result: DESeq2RunResult, alpha: float) -> None:
+    """Serialise a :class:`DESeq2RunResult` to a directory on disk.
+
+    Creates the directory (and any parents) if it does not exist.  Writes:
+
+    * ``deseq2_results.tsv`` — differential-expression results table.
+    * ``normalized_counts.tsv`` — size-factor-normalised count matrix.
+    * ``metadata.json`` — run parameters and identifiers.
+    * ``sample_metadata.tsv`` *(optional)* — per-sample covariate table.
+    * ``sample_distances.tsv`` *(optional)* — pairwise Euclidean distance matrix.
+    * ``sample_distance_order.txt`` *(optional)* — clustered sample ordering.
+    * ``sample_pca.tsv`` *(optional)* — PC1/PC2 scores per sample.
+    * ``count_matrix_heatmap.tsv`` *(optional)* — top-100-feature VST heatmap.
+    """
     path.mkdir(parents=True, exist_ok=True)
 
     run_result.results.to_csv(path / "deseq2_results.tsv", sep="\t", index=False)
@@ -136,6 +158,11 @@ def _write_run_result(path: Path, run_result: DESeq2RunResult, alpha: float) -> 
 def write_run_result_artifact(
     run_result: DESeq2RunResult, alpha: float
 ) -> DESeq2RunDirectoryFormat:
+    """Wrap :class:`DESeq2RunResult` in a QIIME 2 directory-format artifact.
+
+    Allocates a new :class:`DESeq2RunDirectoryFormat`, serialises *run_result*
+    into it via :func:`_write_run_result`, and returns the artifact.
+    """
     run_data = DESeq2RunDirectoryFormat()
     _write_run_result(Path(str(run_data.path)), run_result=run_result, alpha=alpha)
     return run_data
@@ -144,6 +171,17 @@ def write_run_result_artifact(
 def _parse_run_results(
     run_data: DESeq2RunDirectoryFormat,
 ) -> tuple[DESeq2RunResult, float]:
+    """Deserialise a :class:`DESeq2RunDirectoryFormat` artifact into a run result.
+
+    Reads ``metadata.json`` for run parameters and alpha, then loads all
+    optional TSV files that are present on disk (sample distances, PCA scores,
+    heatmap matrix, sample metadata).  Missing optional files are silently
+    ignored.
+
+    Returns:
+        ``(run_result, alpha)`` — the reconstructed :class:`DESeq2RunResult`
+        and the significance threshold used during the run.
+    """
     run_data_path = Path(str(run_data.path))
     metadata = json.loads((run_data_path / "metadata.json").read_text(encoding="utf-8"))
     alpha = float(metadata["alpha"])

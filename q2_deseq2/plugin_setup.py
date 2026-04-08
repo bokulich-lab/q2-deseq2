@@ -27,7 +27,7 @@ from rachis.core.type import Range
 
 from q2_deseq2 import __version__
 from q2_deseq2.methods import (
-    _estimate_differential_expression,
+    _estimate,
     _estimate_model,
 )
 from q2_deseq2.pipelines import estimate, estimate_model
@@ -94,7 +94,7 @@ common_param_descriptions = {
 }
 
 plugin.methods.register_function(
-    function=_estimate_differential_expression,
+    function=_estimate,
     inputs={"table": FeatureTable[Frequency]},
     parameters={
         "condition": MetadataColumn[Categorical],

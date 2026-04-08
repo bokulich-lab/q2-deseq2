@@ -635,9 +635,6 @@ def _render_report(
     sample_pca_percent_variance: tuple[float, float] = (),
     count_matrix_heatmap: pd.DataFrame | None = None,
 ) -> None:
-    if q2templates is None:
-        raise ImportError("q2templates is required to render the DESeq2 visualization.")
-
     _copy_report_assets(output_dir)
     data_dir = output_dir / "data"
     data_dir.mkdir(exist_ok=True)

@@ -10,69 +10,12 @@ import biom
 import pandas as pd
 
 from q2_deseq2.types import DESeq2RunDirectoryFormat
-from q2_deseq2.utils.analytics import (
-    _compute_count_matrix_heatmap,
-    _compute_normalized_counts,
-    _compute_run_analytics,
-    _compute_sample_distance_matrix,
-    _compute_sample_distance_order,
-    _compute_sample_pca,
-)
-from q2_deseq2.utils.frame_utils import (
-    _first_non_empty_string,
-    _first_value_from_column,
-    _unique_non_empty_values,
-)
 from q2_deseq2.utils.prep import (
-    _coerce_metadata_column,
-    _coerce_metadata_frame,
-    _collect_matching_samples,
-    _extract_formula_columns,
-    _filter_counts,
-    _normalize_formula,
-    _normalize_reference_levels,
-    _normalize_size_factor_type,
-    _parse_reference_level_spec,
-    _prepare_count_table,
     _prepare_inputs,
     _prepare_model_inputs,
-    _validate_effect_specs,
 )
 from q2_deseq2.utils.run_data import DESeq2RunResult, write_run_result_artifact
-from q2_deseq2.utils.runner import _run_deseq2_with_frames, _write_lines
-
-__all__ = [
-    "_coerce_metadata_column",
-    "_coerce_metadata_frame",
-    "_collect_matching_samples",
-    "_compute_count_matrix_heatmap",
-    "_compute_normalized_counts",
-    "_compute_run_analytics",
-    "_compute_sample_distance_matrix",
-    "_compute_sample_distance_order",
-    "_compute_sample_pca",
-    "_estimate_differential_expression",
-    "_estimate_model",
-    "_extract_formula_columns",
-    "_filter_counts",
-    "_first_non_empty_string",
-    "_first_value_from_column",
-    "_normalize_formula",
-    "_normalize_reference_levels",
-    "_normalize_size_factor_type",
-    "_parse_reference_level_spec",
-    "_prepare_count_table",
-    "_prepare_inputs",
-    "_prepare_model_inputs",
-    "_run_deseq2_with_frames",
-    "_unique_non_empty_values",
-    "_validate_effect_specs",
-    "_write_lines",
-    "DESeq2RunResult",
-    "run_deseq2",
-    "run_deseq2_model",
-    "write_run_result_artifact",
-]
+from q2_deseq2.utils.runner import _run_deseq2_with_frames
 
 
 def run_deseq2_model(
@@ -195,7 +138,7 @@ def _estimate_model(
     return run_result.results, run_data
 
 
-def _estimate_differential_expression(
+def _estimate(
     table: biom.Table,
     condition: str,
     reference_level: str = "",

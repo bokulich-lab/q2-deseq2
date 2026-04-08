@@ -8,11 +8,21 @@
 
 import numpy as np
 import pandas as pd
+from scipy.cluster.hierarchy import leaves_list, linkage
+from scipy.spatial.distance import squareform
+from sklearn.decomposition import PCA
+from sklearn.metrics.pairwise import euclidean_distances
 
 
 def _compute_normalized_counts(
     counts_df: pd.DataFrame, size_factors: pd.Series
 ) -> pd.DataFrame:
+    """Divide raw counts by per-sample DESeq2 size factors.
+
+    Returns a DataFrame with a leading ``feature_id`` column followed by one
+    column per sample.  Raises ``RuntimeError`` if any sample is missing a
+    size factor.
+    """
     aligned_size_factors = size_factors.reindex(counts_df.columns.map(str))
     missing_samples = aligned_size_factors[aligned_size_factors.isna()].index.tolist()
     if missing_samples:
@@ -32,114 +42,51 @@ def _compute_normalized_counts(
 
 
 def _compute_sample_distance_matrix(vst_counts: pd.DataFrame) -> pd.DataFrame:
+    """Compute the pairwise Euclidean distance matrix across samples.
+
+    Uses VST-normalised counts (genes × samples) via
+    ``sklearn.metrics.pairwise.euclidean_distances``.  The returned DataFrame
+    is labelled by sample ID on both axes.
+    """
     sample_ids = vst_counts.columns.map(str)
-    sample_matrix = vst_counts.to_numpy(dtype=float).T
-    squared_norms = np.sum(sample_matrix * sample_matrix, axis=1, keepdims=True)
-    squared_distances = (
-        squared_norms + squared_norms.T - 2 * (sample_matrix @ sample_matrix.T)
-    )
-    squared_distances = np.maximum(squared_distances, 0.0)
-    distances = np.sqrt(squared_distances)
+    distances = euclidean_distances(vst_counts.to_numpy(dtype=float).T)
     return pd.DataFrame(distances, index=sample_ids, columns=sample_ids)
 
 
 def _compute_sample_distance_order(
     sample_distance_matrix: pd.DataFrame,
 ) -> tuple[str, ...]:
+    """Return a sample ordering produced by complete-linkage hierarchical clustering.
+
+    Uses ``scipy.cluster.hierarchy.linkage`` (``method="complete"``) on the
+    condensed form of the pre-computed distance matrix, then extracts the
+    dendrogram leaf order via ``leaves_list``.
+
+    Returns the original sample tuple unchanged when fewer than two samples
+    are present.
+    """
     sample_ids = tuple(sample_distance_matrix.index.map(str))
-    sample_count = len(sample_ids)
-    if sample_count < 2:
+    if len(sample_ids) < 2:
         return sample_ids
-
-    distances = sample_distance_matrix.to_numpy(dtype=float)
-    clusters = {
-        index: {"order": (index,), "height": 0.0} for index in range(sample_count)
-    }
-    cluster_distances = {
-        (left, right): float(distances[left, right])
-        for left in range(sample_count)
-        for right in range(left + 1, sample_count)
-    }
-
-    active_clusters = list(range(sample_count))
-    next_cluster_id = sample_count
-
-    while len(active_clusters) > 1:
-        best_pair = None
-        best_key = None
-        active_clusters_sorted = sorted(
-            active_clusters, key=lambda cluster_id: clusters[cluster_id]["order"]
-        )
-        for left_index, left_cluster in enumerate(active_clusters_sorted[:-1]):
-            for right_cluster in active_clusters_sorted[left_index + 1 :]:
-                pair = (
-                    (left_cluster, right_cluster)
-                    if left_cluster < right_cluster
-                    else (right_cluster, left_cluster)
-                )
-                candidate_key = (
-                    cluster_distances[pair],
-                    clusters[left_cluster]["order"],
-                    clusters[right_cluster]["order"],
-                )
-                if best_key is None or candidate_key < best_key:
-                    best_key = candidate_key
-                    best_pair = pair
-
-        if best_pair is None or best_key is None:
-            break
-
-        left_cluster, right_cluster = sorted(
-            best_pair,
-            key=lambda cluster_id: (
-                clusters[cluster_id]["height"],
-                clusters[cluster_id]["order"],
-            ),
-        )
-        merged_order = (
-            clusters[left_cluster]["order"] + clusters[right_cluster]["order"]
-        )
-        merged_height = float(best_key[0])
-        clusters[next_cluster_id] = {
-            "order": merged_order,
-            "height": merged_height,
-        }
-
-        remaining_clusters = [
-            cluster_id for cluster_id in active_clusters if cluster_id not in best_pair
-        ]
-        for other_cluster in remaining_clusters:
-            left_distance = cluster_distances[
-                (
-                    (left_cluster, other_cluster)
-                    if left_cluster < other_cluster
-                    else (other_cluster, left_cluster)
-                )
-            ]
-            right_distance = cluster_distances[
-                (
-                    (right_cluster, other_cluster)
-                    if right_cluster < other_cluster
-                    else (other_cluster, right_cluster)
-                )
-            ]
-            pair = (
-                (other_cluster, next_cluster_id)
-                if other_cluster < next_cluster_id
-                else (next_cluster_id, other_cluster)
-            )
-            cluster_distances[pair] = max(left_distance, right_distance)
-
-        active_clusters = remaining_clusters + [next_cluster_id]
-        next_cluster_id += 1
-
-    final_order = clusters[active_clusters[0]]["order"]
-    return tuple(sample_ids[index] for index in final_order)
+    condensed = squareform(sample_distance_matrix.to_numpy(dtype=float))
+    order = leaves_list(linkage(condensed, method="complete"))
+    return tuple(sample_ids[i] for i in order)
 
 
 def _compute_sample_pca(
     vst_counts: pd.DataFrame,
 ) -> tuple[pd.DataFrame, tuple[float, float]]:
+    """Project samples onto the first two principal components of VST counts.
+
+    Up to the 500 highest-variance genes are used (matching the DESeq2 R
+    convention). PCA is performed by ``sklearn.decomposition.PCA``, which
+    handles mean-centring internally.
+
+    Returns:
+        scores: DataFrame (samples × 2) with columns ``PC1`` and ``PC2``.
+        percent_variance: ``(pct_PC1, pct_PC2)`` as floats in ``[0, 100]``.
+            Empty tuple when no variance can be computed.
+    """
     sample_ids = vst_counts.columns.map(str)
     sample_count = len(sample_ids)
     if sample_count == 0:
@@ -158,36 +105,15 @@ def _compute_sample_pca(
     ddof = 1 if sample_count > 1 else 0
     row_variances = np.var(matrix, axis=1, ddof=ddof)
     selected_rows = np.argsort(-row_variances, kind="mergesort")[:ntop]
-    selected_matrix = matrix[selected_rows, :].T
-    centered_matrix = selected_matrix - selected_matrix.mean(axis=0, keepdims=True)
+    selected_matrix = matrix[selected_rows, :].T  # shape: (n_samples, ntop)
 
-    if centered_matrix.size == 0:
-        singular_values = np.array([], dtype=float)
-        sample_scores = np.zeros((sample_count, 0), dtype=float)
-    else:
-        left_singular_vectors, singular_values, _ = np.linalg.svd(
-            centered_matrix, full_matrices=False
-        )
-        sample_scores = left_singular_vectors * singular_values
+    n_components = min(2, sample_count, ntop)
+    pca = PCA(n_components=n_components)
+    scores = pca.fit_transform(selected_matrix)
 
-    explained_variance = singular_values * singular_values
-    total_variance = float(explained_variance.sum())
-    if total_variance > 0:
-        percent_variance = explained_variance / total_variance
-    else:
-        percent_variance = np.zeros(max(1, len(singular_values)), dtype=float)
-        percent_variance[0] = 1.0
-
-    pc1_values = (
-        sample_scores[:, 0]
-        if sample_scores.shape[1] >= 1
-        else np.zeros(sample_count, dtype=float)
-    )
-    pc2_values = (
-        sample_scores[:, 1]
-        if sample_scores.shape[1] >= 2
-        else np.zeros(sample_count, dtype=float)
-    )
+    pc1_values = scores[:, 0] if n_components >= 1 else np.zeros(sample_count)
+    pc2_values = scores[:, 1] if n_components >= 2 else np.zeros(sample_count)
+    percent_variance = pca.explained_variance_ratio_
     percent_pc1 = (
         float(percent_variance[0] * 100) if len(percent_variance) >= 1 else 0.0
     )
@@ -207,6 +133,15 @@ def _compute_count_matrix_heatmap(
     vst_counts: pd.DataFrame,
     sample_distance_order: tuple[str, ...],
 ) -> pd.DataFrame:
+    """Select the top 100 highest-variance features and reorder columns by clustering.
+
+    Features are ranked by per-row variance of VST counts.  Columns are
+    arranged according to *sample_distance_order* (as returned by
+    :func:`_compute_sample_distance_order`), falling back to the original
+    column order for any sample absent from the ordering.
+
+    Returns a (features × samples) DataFrame ready to be rendered as a heatmap.
+    """
     ordered_sample_ids = [
         sample_id
         for sample_id in sample_distance_order
@@ -242,6 +177,18 @@ def _compute_run_analytics(
     tuple[float, float],
     pd.DataFrame,
 ]:
+    """Orchestrate all post-DESeq2 analytics in a single call.
+
+    Validates that every sample and feature in *counts_df* is present in
+    *vst_counts*, then delegates to the individual compute helpers.
+
+    Returns a 6-tuple:
+        ``(normalized_counts, sample_distance_matrix, sample_distance_order,
+        sample_pca_scores, sample_pca_percent_variance, count_matrix_heatmap)``
+
+    Raises ``RuntimeError`` if *vst_counts* is missing any expected sample or
+    feature.
+    """
     expected_sample_ids = list(counts_df.columns.map(str))
     missing_vst_samples = [
         sample_id

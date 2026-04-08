@@ -1,11 +1,11 @@
 # Unit tests for the helper functions defined in run_deseq2.R.
 #
 # Run from the repo root:
-#   Rscript -e "testthat::test_file('q2_deseq2/r/tests/test_run_deseq2.R')"
+#   Rscript -e "testthat::test_file('q2_deseq2/r/test_run_deseq2.R')"
 #
 # Or inside the Docker container (rna-seq env):
 #   conda run -n rna-seq Rscript -e \
-#     "testthat::test_file('/work/q2-deseq2/q2_deseq2/r/tests/test_run_deseq2.R')"
+#     "testthat::test_file('/work/q2-deseq2/q2_deseq2/r/test_run_deseq2.R')"
 
 library(testthat)
 
@@ -20,7 +20,7 @@ script_path <- local({
     # testthat::test_file() sets cwd to the directory containing the test file.
     getwd()
   }
-  normalizePath(file.path(test_dir, "..", "run_deseq2.R"), mustWork = TRUE)
+  normalizePath(file.path(test_dir, "run_deseq2.R"), mustWork = TRUE)
 })
 source(script_path)
 

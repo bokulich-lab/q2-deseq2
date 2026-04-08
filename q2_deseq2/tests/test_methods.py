@@ -6,7 +6,7 @@ import biom
 import pandas as pd
 import qiime2
 from pandas.testing import assert_frame_equal
-from q2_deseq2._run_data import DESeq2RunResult
+from q2_deseq2.utils.run_data import DESeq2RunResult
 from qiime2.plugin.testing import TestPluginBase
 
 from q2_deseq2 import methods
@@ -366,7 +366,8 @@ class TestMethods(TestPluginBase):
             -observed_sample_pca_scores.loc["Sample2", "PC1"],
         )
         self.assertAlmostEqual(observed_sample_pca_scores["PC2"].abs().max(), 0.0)
-        self.assertEqual(observed_sample_pca_percent_variance, (100.0, 0.0))
+        self.assertAlmostEqual(observed_sample_pca_percent_variance[0], 100.0)
+        self.assertAlmostEqual(observed_sample_pca_percent_variance[1], 0.0)
         assert_frame_equal(observed_count_matrix_heatmap, expected_count_matrix_heatmap)
 
     def test_r_script_contains_expected_steps(self):
@@ -404,7 +405,7 @@ class TestMethods(TestPluginBase):
         self.assertNotIn("--test-level", script)
         self.assertTrue(script.endswith("\n"))
 
-    @patch("q2_deseq2._methodlib.runner.run")
+    @patch("q2_deseq2.utils.runner.run")
     def test_run_deseq2_executes_command_and_reads_outputs(self, run_mock):
         expected_results = self.sample_run_result.results
         captured = {}
@@ -578,7 +579,7 @@ class TestMethods(TestPluginBase):
         self.assertEqual(observed.test_level, "")
         self.assertEqual(observed.reference_level, "control")
 
-    @patch("q2_deseq2._methodlib.runner.run")
+    @patch("q2_deseq2.utils.runner.run")
     def test_run_deseq2_model_executes_command_and_reads_outputs(self, run_mock):
         expected_results = pd.DataFrame(
             [
@@ -705,7 +706,7 @@ class TestMethods(TestPluginBase):
         self.assertIn("--ma-plot", run_mock.call_args.args[0])
         self.assertNotIn("--volcano-plot", run_mock.call_args.args[0])
 
-    @patch("q2_deseq2._methodlib.runner.run")
+    @patch("q2_deseq2.utils.runner.run")
     def test_run_deseq2_raises_runtime_error_on_failure(self, run_mock):
         run_mock.side_effect = CalledProcessError(
             returncode=1,
@@ -803,7 +804,7 @@ class TestMethods(TestPluginBase):
         self.assertEqual(observed.test_level, "treated")
         self.assertEqual(observed.reference_level, "control")
 
-    @patch("q2_deseq2._methodlib.runner.run")
+    @patch("q2_deseq2.utils.runner.run")
     def test_run_deseq2_model_lrt_passes_correct_arguments(self, run_mock):
         expected_results = pd.DataFrame(
             [

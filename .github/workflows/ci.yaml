@@ -22,7 +22,7 @@ jobs:
       matrix:
         r-version: ["4.4.2", "4.5.2"]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v5
 
       - uses: r-lib/actions/setup-r@v2
         with:
@@ -46,6 +46,6 @@ jobs:
         shell: Rscript {0}
         run: |
           testthat::test_file(
-            "q2_deseq2/r/tests/test_run_deseq2.R",
+            "q2_deseq2/r/test_run_deseq2.R",
             stop_on_failure = TRUE
           )

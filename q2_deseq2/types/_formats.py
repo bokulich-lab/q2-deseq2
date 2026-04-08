@@ -94,7 +94,7 @@ class DESeq2DistanceMatrixFormat(model.TextFileFormat):
 
             if not header or header[0] != "sample_id":
                 raise ValidationError(
-                    'DESeq2 sample distance table must start with a '
+                    "DESeq2 sample distance table must start with a "
                     '"sample_id" header column.'
                 )
 
@@ -135,7 +135,7 @@ class DESeq2SampleMetadataFormat(model.TextFileFormat):
 
             if not header or header[0] != "sample_id":
                 raise ValidationError(
-                    'DESeq2 sample metadata table must start with a '
+                    "DESeq2 sample metadata table must start with a "
                     '"sample_id" header column.'
                 )
 
@@ -200,7 +200,7 @@ class DESeq2CountMatrixHeatmapFormat(model.TextFileFormat):
 
             if not header or header[0] != "feature_id":
                 raise ValidationError(
-                    'DESeq2 count-matrix heatmap table must start with a '
+                    "DESeq2 count-matrix heatmap table must start with a "
                     '"feature_id" header column.'
                 )
 

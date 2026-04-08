@@ -92,7 +92,7 @@ def _normalize_reference_levels(reference_levels: list[str] | None) -> list[str]
         column, level = _parse_reference_level_spec(spec)
         if column in seen_columns:
             raise ValueError(
-                f'Duplicate reference_levels entry provided for metadata column '
+                f"Duplicate reference_levels entry provided for metadata column "
                 f'"{column}".'
             )
         normalized.append(f"{column}::{level}")
@@ -192,7 +192,7 @@ def _prepare_inputs(
     elif reference_level not in levels:
         raise ValueError(
             f'reference_level "{reference_level}" is not present in the '
-            f'condition metadata.'
+            f"condition metadata."
         )
 
     comparison_levels = [level for level in levels if level != reference_level]

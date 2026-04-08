@@ -588,8 +588,7 @@ class TestMethods(TestPluginBase):
             [
                 {
                     "effect_id": (
-                        "simple::genotype::nonKO::KO|"
-                        "within::treatment::compoundA"
+                        "simple::genotype::nonKO::KO|" "within::treatment::compoundA"
                     ),
                     "effect_label": "genotype: nonKO vs KO within treatment=compoundA",
                     "effect_kind": "simple",

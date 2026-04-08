@@ -45,8 +45,7 @@ jobs:
       - name: Run R unit tests
         shell: Rscript {0}
         run: |
-          setwd("q2_deseq2/r")
           testthat::test_file(
-            "test_run_deseq2.R",
+            normalizePath("q2_deseq2/r/test_run_deseq2.R"),
             stop_on_failure = TRUE
           )

@@ -43,9 +43,8 @@
         "field": "distance"
       },
       "range": {
-        "scheme": "blues"
+        "scheme": "viridis"
       },
-      "reverse": true,
       "nice": true,
       "zero": true
     }

@@ -12,20 +12,19 @@ library(testthat)
 # Source the R script so all helper functions are available.  The main body is
 # guarded by sys.nframe() == 0L so it will NOT execute when sourced.
 script_path <- local({
+  # Q2_DESEQ2_R_DIR env var is the most reliable pointer (set by CI).
+  env_dir <- Sys.getenv("Q2_DESEQ2_R_DIR", unset = "")
+  if (nzchar(env_dir) && file.exists(file.path(env_dir, "run_deseq2.R"))) {
+    return(normalizePath(file.path(env_dir, "run_deseq2.R"), mustWork = TRUE))
+  }
+
   # When invoked directly via Rscript the file path is in --file= arg.
   file_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
   test_dir <- if (length(file_arg)) {
     dirname(normalizePath(sub("^--file=", "", file_arg[1])))
   } else {
-    # When sourced via testthat::test_file(), the test file may be copied to a
-    # temp directory so getwd() won't point to the original location.  Try
-    # several strategies to locate run_deseq2.R.
-    env_dir <- Sys.getenv("Q2_DESEQ2_R_DIR", unset = "")
+    # Scan the call stack for ofile set by base::source().
     candidates <- character(0)
-    if (nzchar(env_dir)) {
-      candidates <- c(candidates, file.path(env_dir, "run_deseq2.R"))
-    }
-    # Check ofile from source() if available on the call stack.
     for (frame in sys.frames()) {
       if (exists("ofile", envir = frame, inherits = FALSE)) {
         ofile <- get("ofile", envir = frame, inherits = FALSE)

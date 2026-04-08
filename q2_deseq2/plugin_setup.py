@@ -9,7 +9,7 @@
 from q2_types.feature_data import FeatureData
 from q2_types.feature_table import FeatureTable, Frequency
 from q2_types.genome_data import GenomeData, Loci
-from qiime2.plugin import (
+from rachis.plugin import (
     Bool,
     Categorical,
     Choices,
@@ -47,7 +47,7 @@ plugin = Plugin(
     version=__version__,
     website="https://github.com/bokulich-lab/q2-deseq2",
     package="q2_deseq2",
-    description="QIIME 2 plugin for differential abundance analysis with DESeq2.",
+    description="QIIME 2 plugin for differential expression analysis with DESeq2.",
     short_description="DESeq2 integration for QIIME 2.",
     citations=[citations["Love-2014"]],
 )
@@ -73,20 +73,35 @@ plugin.register_artifact_class(
     ),
 )
 
+common_params = {
+    "min_total_count": Int % Range(0, None),
+    "fit_type": Str % Choices("parametric", "local", "mean"),
+    "size_factor_type": Str % Choices("ratio", "poscounts", "iterate"),
+    "alpha": Float % Range(0.0, 1.0),
+    "cooks_cutoff": Bool,
+    "independent_filtering": Bool,
+}
+
+common_param_descriptions = {
+    "min_total_count": (
+        "Filter out genes with total count below this threshold before DESeq2."
+    ),
+    "fit_type": "DESeq2 dispersion fit type.",
+    "size_factor_type": "DESeq2 size-factor estimation type.",
+    "alpha": "Adjusted p-value cutoff used by DESeq2 for significance summaries.",
+    "cooks_cutoff": "Use Cook's distance cutoff in DESeq2 result filtering.",
+    "independent_filtering": "Enable DESeq2 independent filtering.",
+}
+
 plugin.methods.register_function(
     function=_estimate_differential_expression,
     inputs={"table": FeatureTable[Frequency]},
     parameters={
         "condition": MetadataColumn[Categorical],
         "reference_level": Str,
-        "min_total_count": Int % Range(0, None),
-        "fit_type": Str % Choices("parametric", "local", "mean"),
-        "size_factor_type": Str % Choices("ratio", "poscounts", "iterate"),
-        "alpha": Float % Range(0.0, 1.0),
-        "cooks_cutoff": Bool,
-        "independent_filtering": Bool,
+        **common_params,
     },
-    outputs=[("deseq2_stats", FeatureData[DESeq2Stats]), ("deseq2_results", DESeq2Run)],
+    outputs=[("stats", FeatureData[DESeq2Stats]), ("results", DESeq2Run)],
     input_descriptions={"table": "A per-sample gene count feature table."},
     parameter_descriptions={
         "condition": (
@@ -98,21 +113,14 @@ plugin.methods.register_function(
             "contrasts. If omitted, inferred for two-level designs and required "
             "when more than two levels are present."
         ),
-        "min_total_count": (
-            "Filter out genes with total count below this threshold before DESeq2."
-        ),
-        "fit_type": "DESeq2 dispersion fit type.",
-        "size_factor_type": "DESeq2 size-factor estimation type.",
-        "alpha": "Adjusted p-value cutoff used by DESeq2 for significance summaries.",
-        "cooks_cutoff": "Use Cook's distance cutoff in DESeq2 result filtering.",
-        "independent_filtering": "Enable DESeq2 independent filtering.",
+        **common_param_descriptions,
     },
     output_descriptions={
-        "deseq2_stats": (
+        "stats": (
             "Tabular DESeq2 statistics per gene and comparison including "
             "effect size and significance metrics."
         ),
-        "deseq2_results": (
+        "results": (
             "Internal DESeq2 run outputs including normalized counts and summaries."
         ),
     },
@@ -134,14 +142,9 @@ plugin.methods.register_function(
         "effect_specs": List[Str],
         "test": Str % Choices("wald", "lrt"),
         "reduced_formula": Str,
-        "min_total_count": Int % Range(0, None),
-        "fit_type": Str % Choices("parametric", "local", "mean"),
-        "size_factor_type": Str % Choices("ratio", "poscounts", "iterate"),
-        "alpha": Float % Range(0.0, 1.0),
-        "cooks_cutoff": Bool,
-        "independent_filtering": Bool,
+        **common_params,
     },
-    outputs=[("deseq2_stats", FeatureData[DESeq2Stats]), ("deseq2_results", DESeq2Run)],
+    outputs=[("stats", FeatureData[DESeq2Stats]), ("results", DESeq2Run)],
     input_descriptions={"table": "A per-sample gene count feature table."},
     parameter_descriptions={
         "metadata": "Sample metadata used to construct the DESeq2 design matrix.",
@@ -167,21 +170,14 @@ plugin.methods.register_function(
         "reduced_formula": (
             "Reduced model formula used when test='lrt'. Leave empty for Wald tests."
         ),
-        "min_total_count": (
-            "Filter out genes with total count below this threshold before DESeq2."
-        ),
-        "fit_type": "DESeq2 dispersion fit type.",
-        "size_factor_type": "DESeq2 size-factor estimation type.",
-        "alpha": "Adjusted p-value cutoff used by DESeq2 for significance summaries.",
-        "cooks_cutoff": "Use Cook's distance cutoff in DESeq2 result filtering.",
-        "independent_filtering": "Enable DESeq2 independent filtering.",
+        **common_param_descriptions,
     },
     output_descriptions={
-        "deseq2_stats": (
+        "stats": (
             "Tabular DESeq2 statistics per gene and extracted model effect including "
             "effect size and significance metrics."
         ),
-        "deseq2_results": (
+        "results": (
             "Internal DESeq2 run outputs including normalized counts, fitted-model "
             "metadata, and effect summaries."
         ),
@@ -232,15 +228,10 @@ plugin.pipelines.register_function(
         "reference_id": Str,
         "condition": MetadataColumn[Categorical],
         "reference_level": Str,
-        "min_total_count": Int % Range(0, None),
-        "fit_type": Str % Choices("parametric", "local", "mean"),
-        "size_factor_type": Str % Choices("ratio", "poscounts", "iterate"),
-        "alpha": Float % Range(0.0, 1.0),
-        "cooks_cutoff": Bool,
-        "independent_filtering": Bool,
+        **common_params,
     },
     outputs=[
-        ("expression_stats", FeatureData[DESeq2Stats]),
+        ("stats", FeatureData[DESeq2Stats]),
         ("visualization", Visualization),
     ],
     input_descriptions={
@@ -261,21 +252,14 @@ plugin.pipelines.register_function(
             "contrasts. If omitted, inferred for two-level designs and required "
             "when more than two levels are present."
         ),
-        "min_total_count": (
-            "Filter out genes with total count below this threshold before DESeq2."
-        ),
-        "fit_type": "DESeq2 dispersion fit type.",
-        "size_factor_type": "DESeq2 size-factor estimation type.",
-        "alpha": "Adjusted p-value cutoff used by DESeq2 for significance summaries.",
-        "cooks_cutoff": "Use Cook's distance cutoff in DESeq2 result filtering.",
-        "independent_filtering": "Enable DESeq2 independent filtering.",
+        **common_param_descriptions,
     },
     output_descriptions={
-        "expression_stats": (
+        "stats": (
             "Tabular DESeq2 statistics per gene and comparison including effect "
             "size and significance metrics."
         ),
-        "visualization": ("Differential expression results visualization."),
+        "visualization": "Differential expression results visualization.",
     },
     name="Estimate differential expression with DESeq2.",
     description=(
@@ -296,15 +280,10 @@ plugin.pipelines.register_function(
         "effect_specs": List[Str],
         "test": Str % Choices("wald", "lrt"),
         "reduced_formula": Str,
-        "min_total_count": Int % Range(0, None),
-        "fit_type": Str % Choices("parametric", "local", "mean"),
-        "size_factor_type": Str % Choices("ratio", "poscounts", "iterate"),
-        "alpha": Float % Range(0.0, 1.0),
-        "cooks_cutoff": Bool,
-        "independent_filtering": Bool,
+        **common_params,
     },
     outputs=[
-        ("expression_stats", FeatureData[DESeq2Stats]),
+        ("stats", FeatureData[DESeq2Stats]),
         ("visualization", Visualization),
     ],
     input_descriptions={
@@ -338,21 +317,14 @@ plugin.pipelines.register_function(
         "reduced_formula": (
             "Reduced model formula used when test='lrt'. Leave empty for Wald tests."
         ),
-        "min_total_count": (
-            "Filter out genes with total count below this threshold before DESeq2."
-        ),
-        "fit_type": "DESeq2 dispersion fit type.",
-        "size_factor_type": "DESeq2 size-factor estimation type.",
-        "alpha": "Adjusted p-value cutoff used by DESeq2 for significance summaries.",
-        "cooks_cutoff": "Use Cook's distance cutoff in DESeq2 result filtering.",
-        "independent_filtering": "Enable DESeq2 independent filtering.",
+        **common_param_descriptions,
     },
     output_descriptions={
-        "expression_stats": (
+        "stats": (
             "Tabular DESeq2 statistics per gene and extracted model effect including "
             "effect size and significance metrics."
         ),
-        "visualization": ("Differential expression results visualization."),
+        "visualization": "Differential expression results visualization.",
     },
     name="Estimate a multi-factor DESeq2 model and visualize the results.",
     description=(

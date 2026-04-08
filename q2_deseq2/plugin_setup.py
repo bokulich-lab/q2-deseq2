@@ -67,7 +67,10 @@ plugin.register_artifact_class(
 plugin.register_artifact_class(
     DESeq2Run,
     DESeq2RunDirectoryFormat,
-    description="Internal DESeq2 run outputs used to build visualizations without rerunning DESeq2.",
+    description=(
+        "Internal DESeq2 run outputs used to build visualizations "
+        "without rerunning DESeq2."
+    ),
 )
 
 plugin.methods.register_function(
@@ -91,11 +94,13 @@ plugin.methods.register_function(
             "At least two levels are required."
         ),
         "reference_level": (
-            "Condition level to use as the reference baseline for all pairwise contrasts. "
-            "If omitted, inferred for two-level designs and required when more than two "
-            "levels are present."
+            "Condition level to use as the reference baseline for all pairwise "
+            "contrasts. If omitted, inferred for two-level designs and required "
+            "when more than two levels are present."
         ),
-        "min_total_count": "Filter out genes with total count below this threshold before DESeq2.",
+        "min_total_count": (
+            "Filter out genes with total count below this threshold before DESeq2."
+        ),
         "fit_type": "DESeq2 dispersion fit type.",
         "size_factor_type": "DESeq2 size-factor estimation type.",
         "alpha": "Adjusted p-value cutoff used by DESeq2 for significance summaries.",
@@ -104,8 +109,8 @@ plugin.methods.register_function(
     },
     output_descriptions={
         "deseq2_stats": (
-            "Tabular DESeq2 statistics per gene and comparison including effect size and "
-            "significance metrics."
+            "Tabular DESeq2 statistics per gene and comparison including "
+            "effect size and significance metrics."
         ),
         "deseq2_results": (
             "Internal DESeq2 run outputs including normalized counts and summaries."
@@ -162,7 +167,9 @@ plugin.methods.register_function(
         "reduced_formula": (
             "Reduced model formula used when test='lrt'. Leave empty for Wald tests."
         ),
-        "min_total_count": "Filter out genes with total count below this threshold before DESeq2.",
+        "min_total_count": (
+            "Filter out genes with total count below this threshold before DESeq2."
+        ),
         "fit_type": "DESeq2 dispersion fit type.",
         "size_factor_type": "DESeq2 size-factor estimation type.",
         "alpha": "Adjusted p-value cutoff used by DESeq2 for significance summaries.",
@@ -182,7 +189,8 @@ plugin.methods.register_function(
     name="Estimate a multi-factor DESeq2 model.",
     description=(
         "Run DESeq2 using full sample metadata plus a fixed-effects formula and "
-        "return both the feature-level statistics artifact and an internal run artifact."
+        "return both the feature-level statistics artifact and an internal run "
+        "artifact."
     ),
     citations=[citations["Love-2014"]],
 )
@@ -195,7 +203,8 @@ plugin.visualizers.register_function(
     },
     input_descriptions={
         "deseq2_results": (
-            "Internal DESeq2 run artifact containing result tables and normalized counts."
+            "Internal DESeq2 run artifact containing result tables and "
+            "normalized counts."
         ),
         "gene_annotations": (
             "Optional GenomeData[Loci] annotations in GFF3 format. "
@@ -248,11 +257,13 @@ plugin.pipelines.register_function(
             "At least two levels are required."
         ),
         "reference_level": (
-            "Condition level to use as the reference baseline for all pairwise contrasts. "
-            "If omitted, inferred for two-level designs and required when more than two "
-            "levels are present."
+            "Condition level to use as the reference baseline for all pairwise "
+            "contrasts. If omitted, inferred for two-level designs and required "
+            "when more than two levels are present."
         ),
-        "min_total_count": "Filter out genes with total count below this threshold before DESeq2.",
+        "min_total_count": (
+            "Filter out genes with total count below this threshold before DESeq2."
+        ),
         "fit_type": "DESeq2 dispersion fit type.",
         "size_factor_type": "DESeq2 size-factor estimation type.",
         "alpha": "Adjusted p-value cutoff used by DESeq2 for significance summaries.",
@@ -261,8 +272,8 @@ plugin.pipelines.register_function(
     },
     output_descriptions={
         "expression_stats": (
-            "Tabular DESeq2 statistics per gene and comparison including effect size and "
-            "significance metrics."
+            "Tabular DESeq2 statistics per gene and comparison including effect "
+            "size and significance metrics."
         ),
         "visualization": ("Differential expression results visualization."),
     },
@@ -327,7 +338,9 @@ plugin.pipelines.register_function(
         "reduced_formula": (
             "Reduced model formula used when test='lrt'. Leave empty for Wald tests."
         ),
-        "min_total_count": "Filter out genes with total count below this threshold before DESeq2.",
+        "min_total_count": (
+            "Filter out genes with total count below this threshold before DESeq2."
+        ),
         "fit_type": "DESeq2 dispersion fit type.",
         "size_factor_type": "DESeq2 size-factor estimation type.",
         "alpha": "Adjusted p-value cutoff used by DESeq2 for significance summaries.",

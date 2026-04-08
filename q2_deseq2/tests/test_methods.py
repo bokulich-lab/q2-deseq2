@@ -40,7 +40,9 @@ class TestMethods(TestPluginBase):
                         "effect_id": "contrast::condition::other::control",
                         "effect_label": "condition: other vs control",
                         "effect_kind": "contrast",
-                        "effect_expression": 'contrast=c("condition","other","control")',
+                        "effect_expression": (
+                            'contrast=c("condition","other","control")'
+                        ),
                         "comparison": "other vs. control",
                         "test_level": "other",
                         "reference_level": "control",
@@ -56,7 +58,9 @@ class TestMethods(TestPluginBase):
                         "effect_id": "contrast::condition::treated::control",
                         "effect_label": "condition: treated vs control",
                         "effect_kind": "contrast",
-                        "effect_expression": 'contrast=c("condition","treated","control")',
+                        "effect_expression": (
+                            'contrast=c("condition","treated","control")'
+                        ),
                         "comparison": "treated vs. control",
                         "test_level": "treated",
                         "reference_level": "control",
@@ -422,7 +426,6 @@ class TestMethods(TestPluginBase):
             size_factors_fp = Path(cmd[cmd.index("--size-factors") + 1])
             vst_counts_fp = Path(cmd[cmd.index("--vst-counts") + 1])
             summary_fp = Path(cmd[cmd.index("--summary") + 1])
-            ma_plot_fp = Path(cmd[cmd.index("--ma-plot") + 1])
             results_names_fp = Path(cmd[cmd.index("--results-names") + 1])
             reference_levels_fp = Path(cmd[cmd.index("--reference-levels") + 1])
             effect_specs_fp = Path(cmd[cmd.index("--effect-specs") + 1])
@@ -584,10 +587,16 @@ class TestMethods(TestPluginBase):
         expected_results = pd.DataFrame(
             [
                 {
-                    "effect_id": "simple::genotype::nonKO::KO|within::treatment::compoundA",
+                    "effect_id": (
+                        "simple::genotype::nonKO::KO|"
+                        "within::treatment::compoundA"
+                    ),
                     "effect_label": "genotype: nonKO vs KO within treatment=compoundA",
                     "effect_kind": "simple",
-                    "effect_expression": 'contrast=c("genotype","nonKO","KO"); within="treatment=compoundA"',
+                    "effect_expression": (
+                        'contrast=c("genotype","nonKO","KO"); '
+                        'within="treatment=compoundA"'
+                    ),
                     "comparison": "nonKO vs. KO (treatment=compoundA)",
                     "test_level": "nonKO",
                     "reference_level": "KO",
@@ -610,7 +619,6 @@ class TestMethods(TestPluginBase):
             size_factors_fp = Path(cmd[cmd.index("--size-factors") + 1])
             vst_counts_fp = Path(cmd[cmd.index("--vst-counts") + 1])
             summary_fp = Path(cmd[cmd.index("--summary") + 1])
-            ma_plot_fp = Path(cmd[cmd.index("--ma-plot") + 1])
             results_names_fp = Path(cmd[cmd.index("--results-names") + 1])
             reference_levels_fp = Path(cmd[cmd.index("--reference-levels") + 1])
             effect_specs_fp = Path(cmd[cmd.index("--effect-specs") + 1])

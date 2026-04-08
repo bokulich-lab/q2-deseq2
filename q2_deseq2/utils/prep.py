@@ -33,7 +33,8 @@ def _filter_counts(counts: pd.DataFrame, min_total_count: int) -> pd.DataFrame:
     filtered = counts.loc[counts.sum(axis=1) >= min_total_count]
     if filtered.empty:
         raise ValueError(
-            "No genes remain after filtering. Lower min_total_count or provide a denser feature table."
+            "No genes remain after filtering. Lower min_total_count or "
+            "provide a denser feature table."
         )
     return filtered
 
@@ -46,7 +47,8 @@ def _collect_matching_samples(
     ]
     if len(matched_samples) < 2:
         raise ValueError(
-            f"At least two samples must overlap between the feature table and {context}."
+            f"At least two samples must overlap between the feature table "
+            f"and {context}."
         )
     return matched_samples
 
@@ -57,7 +59,8 @@ def _normalize_formula(formula: str, parameter_name: str) -> str:
         raise ValueError(f"{parameter_name} is required.")
     if not _FORMULA_ALLOWED_CHARS.fullmatch(normalized):
         raise ValueError(
-            f"{parameter_name} may only contain metadata column names, spaces, '+', ':', '*', and parentheses."
+            f"{parameter_name} may only contain metadata column names, "
+            f"spaces, '+', ':', '*', and parentheses."
         )
     return normalized
 
@@ -89,7 +92,8 @@ def _normalize_reference_levels(reference_levels: list[str] | None) -> list[str]
         column, level = _parse_reference_level_spec(spec)
         if column in seen_columns:
             raise ValueError(
-                f'Duplicate reference_levels entry provided for metadata column "{column}".'
+                f'Duplicate reference_levels entry provided for metadata column '
+                f'"{column}".'
             )
         normalized.append(f"{column}::{level}")
         seen_columns.add(column)
@@ -123,7 +127,8 @@ def _validate_effect_specs(effect_specs: list[str] | None, test: str) -> list[st
                 "effect_specs entries must use one of: "
                 "'coef::<resultsName>', "
                 "'contrast::<factor>::<numerator>::<denominator>', or "
-                "'simple::<factor>::<numerator>::<denominator>|within::<factor>::<level>'."
+                "'simple::<factor>::<numerator>::<denominator>|"
+                "within::<factor>::<level>'."
             )
         normalized.append(spec)
 
@@ -186,7 +191,8 @@ def _prepare_inputs(
         reference_level = levels[0]
     elif reference_level not in levels:
         raise ValueError(
-            f'reference_level "{reference_level}" is not present in the condition metadata.'
+            f'reference_level "{reference_level}" is not present in the '
+            f'condition metadata.'
         )
 
     comparison_levels = [level for level in levels if level != reference_level]
@@ -245,8 +251,8 @@ def _prepare_model_inputs(
         column, _ = _parse_reference_level_spec(reference_level_spec)
         if column not in referenced_columns:
             raise ValueError(
-                f'reference_levels entry "{reference_level_spec}" refers to "{column}", '
-                "but that column is not used in the fitted model."
+                f'reference_levels entry "{reference_level_spec}" refers to '
+                f'"{column}", but that column is not used in the fitted model.'
             )
 
     matched_samples = _collect_matching_samples(
@@ -258,7 +264,8 @@ def _prepare_model_inputs(
     coldata = coldata.loc[~coldata.isna().any(axis=1)].copy()
     if coldata.shape[0] < 2:
         raise ValueError(
-            "At least two samples with complete metadata are required after dropping missing values."
+            "At least two samples with complete metadata are required "
+            "after dropping missing values."
         )
 
     counts = counts.loc[:, coldata.index]
@@ -270,13 +277,14 @@ def _prepare_model_inputs(
         column, level = _parse_reference_level_spec(reference_level_spec)
         if is_numeric_dtype(coldata[column]):
             raise ValueError(
-                f'reference_levels entry "{reference_level_spec}" refers to numeric metadata column "{column}".'
+                f'reference_levels entry "{reference_level_spec}" refers to numeric '
+                f'metadata column "{column}".'
             )
         observed_levels = set(coldata[column].astype(str))
         if level not in observed_levels:
             raise ValueError(
-                f'reference_levels entry "{reference_level_spec}" refers to level "{level}", '
-                f'which is not present in metadata column "{column}".'
+                f'reference_levels entry "{reference_level_spec}" refers to level '
+                f'"{level}", which is not present in metadata column "{column}".'
             )
 
     return (

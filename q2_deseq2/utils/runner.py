@@ -140,7 +140,8 @@ def _run_deseq2_with_frames(
         for expected_name, path in expected_outputs.items():
             if not path.exists():
                 raise RuntimeError(
-                    f'DESeq2 completed but expected output file "{expected_name}" was not created.'
+                    f'DESeq2 completed but expected output file '
+                    f'"{expected_name}" was not created.'
                 )
 
         results_df = pd.read_csv(results_fp, sep="\t")

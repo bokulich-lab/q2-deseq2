@@ -1,6 +1,4 @@
-import unittest
 from pathlib import Path
-from subprocess import run as subprocess_run
 
 import biom
 import numpy as np

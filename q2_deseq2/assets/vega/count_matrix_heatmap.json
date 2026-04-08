@@ -43,8 +43,9 @@
         "field": "value"
       },
       "range": {
-        "scheme": "viridis"
+        "scheme": "blues"
       },
+      "reverse": true,
       "nice": true,
       "zero": false
     }

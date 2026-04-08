@@ -44,6 +44,8 @@ jobs:
 
       - name: Run R unit tests
         shell: Rscript {0}
+        env:
+          Q2_DESEQ2_R_DIR: ${{ github.workspace }}/q2_deseq2/r
         run: |
           testthat::test_file(
             normalizePath("q2_deseq2/r/test_run_deseq2.R"),

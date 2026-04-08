@@ -17,17 +17,31 @@ script_path <- local({
   test_dir <- if (length(file_arg)) {
     dirname(normalizePath(sub("^--file=", "", file_arg[1])))
   } else {
-    # When sourced via testthat::test_file(), base::source() stores the path of
-    # the file being evaluated in 'ofile' on its call-stack frame.  Scan for it
-    # so we find the test file's directory regardless of the working directory.
-    ofile <- NULL
+    # When sourced via testthat::test_file(), the test file may be copied to a
+    # temp directory so getwd() won't point to the original location.  Try
+    # several strategies to locate run_deseq2.R.
+    env_dir <- Sys.getenv("Q2_DESEQ2_R_DIR", unset = "")
+    candidates <- character(0)
+    if (nzchar(env_dir)) {
+      candidates <- c(candidates, file.path(env_dir, "run_deseq2.R"))
+    }
+    # Check ofile from source() if available on the call stack.
     for (frame in sys.frames()) {
       if (exists("ofile", envir = frame, inherits = FALSE)) {
         ofile <- get("ofile", envir = frame, inherits = FALSE)
+        if (!is.null(ofile)) {
+          candidates <- c(candidates, file.path(dirname(normalizePath(ofile)), "run_deseq2.R"))
+        }
         break
       }
     }
-    if (!is.null(ofile)) dirname(normalizePath(ofile)) else getwd()
+    candidates <- c(
+      candidates,
+      file.path(getwd(), "run_deseq2.R"),
+      file.path(getwd(), "q2_deseq2", "r", "run_deseq2.R")
+    )
+    found <- Filter(file.exists, candidates)
+    if (length(found) > 0) dirname(normalizePath(found[1])) else getwd()
   }
   normalizePath(file.path(test_dir, "run_deseq2.R"), mustWork = TRUE)
 })

@@ -20,7 +20,6 @@ _CONTRAST_SPEC_RE = re.compile(r"^contrast::([^:]+)::([^:]+)::([^:]+)$")
 _SIMPLE_SPEC_RE = re.compile(
     r"^simple::([^:]+)::([^:]+)::([^:]+)\|within::([^:]+)::([^:]+)$"
 )
-_VALID_SIZE_FACTOR_TYPES = frozenset({"iterate", "poscounts", "ratio"})
 
 
 def _filter_counts(counts: pd.DataFrame, min_total_count: int) -> pd.DataFrame:

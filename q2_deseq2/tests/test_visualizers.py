@@ -248,7 +248,16 @@ class TestVisualizers(TestPluginBase):
             reference_level="control",
         )
 
-        self.assertTrue(
+        self.assertEqual(
+            {
+                "effect_id",
+                "effect_label",
+                "effect_kind",
+                "effect_expression",
+                "comparison",
+                "test_level",
+                "reference_level",
+            },
             {
                 "effect_id",
                 "effect_label",
@@ -258,7 +267,7 @@ class TestVisualizers(TestPluginBase):
                 "test_level",
                 "reference_level",
             }
-            <= set(observed.columns)
+            & set(observed.columns),
         )
         self.assertEqual(observed["effect_id"].nunique(), 1)
         self.assertEqual(observed.loc[0, "effect_label"], "treated vs. control")

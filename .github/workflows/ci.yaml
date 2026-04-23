@@ -28,6 +28,15 @@ jobs:
         with:
           r-version: ${{ matrix.r-version }}
 
+      - name: Install system dependencies for R packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            libxml2-dev \
+            zlib1g-dev
+
       - name: Cache R packages
         uses: actions/cache@v4
         with:
@@ -38,9 +47,10 @@ jobs:
       - name: Install R dependencies
         shell: Rscript {0}
         run: |
-          install.packages("BiocManager", repos = "https://cloud.r-project.org", quiet = TRUE)
-          install.packages("testthat",    repos = "https://cloud.r-project.org", quiet = TRUE)
-          BiocManager::install("DESeq2", ask = FALSE, quiet = TRUE)
+          install.packages("pak", repos = "https://cloud.r-project.org", quiet = TRUE)
+          pak::pkg_install(c("cran::testthat", "bioc::DESeq2"))
+          stopifnot(requireNamespace("testthat", quietly = TRUE))
+          stopifnot(requireNamespace("DESeq2", quietly = TRUE))
 
       - name: Run R unit tests
         shell: Rscript {0}

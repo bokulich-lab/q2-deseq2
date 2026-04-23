@@ -28,6 +28,15 @@ jobs:
         with:
           r-version: ${{ matrix.r-version }}
 
+      - name: Install system dependencies for R packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            libxml2-dev \
+            zlib1g-dev
+
       - name: Cache R packages
         uses: actions/cache@v4
         with:

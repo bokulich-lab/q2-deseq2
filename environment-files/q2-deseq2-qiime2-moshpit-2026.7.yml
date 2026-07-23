@@ -2,6 +2,7 @@ channels:
 - https://packages.qiime2.org/qiime2/2026.4/moshpit/released
 - conda-forge
 - bioconda
+- defaults
 dependencies:
   - rachis-moshpit
   - bioconductor-deseq2

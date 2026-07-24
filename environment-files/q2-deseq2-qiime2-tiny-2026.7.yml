@@ -2,7 +2,6 @@ channels:
 - https://packages.qiime2.org/qiime2/2026.7/tiny/released
 - conda-forge
 - bioconda
-- defaults
 dependencies:
   - rachis-tiny
   - bioconductor-deseq2

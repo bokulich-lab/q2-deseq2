@@ -19,8 +19,7 @@ COPY environment.yml .
 
 RUN apt-get update && apt-get install -y --no-install-recommends wget procps make \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
-    && useradd --create-home --shell /bin/bash qiime2
+    && rm -rf /var/lib/apt/lists/*
 
 RUN micromamba create --yes -n ${PLUGIN_NAME} --file environment.yml \
     && micromamba clean --all --yes \
@@ -34,7 +33,6 @@ RUN micromamba run -n ${PLUGIN_NAME} qiime dev refresh-cache
 RUN echo 'eval "$(micromamba shell hook --shell bash)"' >> $HOME/.bashrc \
     && echo "micromamba activate ${PLUGIN_NAME}" >> $HOME/.bashrc
 RUN echo "source tab-qiime" >> $HOME/.bashrc
-RUN chown -R qiime2:qiime2 $HOME
 
 
 FROM base AS test
@@ -44,7 +42,6 @@ LABEL quay.expires-after=4w
 RUN micromamba run -n ${PLUGIN_NAME} pip install pytest pytest-cov coverage parameterized pytest-xdist
 CMD micromamba run -n ${PLUGIN_NAME} make -f ./plugin/Makefile test-cov
 RUN chmod -R a+rwx /home/qiime2
-USER qiime2
 
 FROM base AS prod
 
@@ -52,4 +49,3 @@ FROM base AS prod
 # `docker run -u UID:GID` works
 RUN rm -rf ./plugin
 RUN chmod -R a+rwx /home/qiime2
-USER qiime2

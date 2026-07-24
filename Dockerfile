@@ -44,6 +44,7 @@ LABEL quay.expires-after=4w
 RUN micromamba run -n ${PLUGIN_NAME} pip install pytest pytest-cov coverage parameterized pytest-xdist
 CMD micromamba run -n ${PLUGIN_NAME} make -f ./plugin/Makefile test-cov
 RUN chmod -R a+rwx /home/qiime2
+USER qiime2
 
 FROM base AS prod
 
